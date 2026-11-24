@@ -17,13 +17,13 @@
 
 set -u
 
-IFACE="${HILINKD_IFACE:-eth1}"          # interface the router appears on
-ROUTER_IP="${HILINKD_ROUTER_IP:-192.168.1.1}"
-LOCAL_IP="${HILINKD_LOCAL_IP:-192.168.1.240}"   # must be free on your LAN
+IFACE="${POCKETSMS_IFACE:-eth1}"          # interface the router appears on
+ROUTER_IP="${POCKETSMS_ROUTER_IP:-192.168.1.1}"
+LOCAL_IP="${POCKETSMS_LOCAL_IP:-192.168.1.240}"   # must be free on your LAN
 ZEROCD_IDS="12d1:1f01"
 MODE_MESSAGE='55534243123456780000000000000011062000000101000100000000000000'
 
-say() { printf '[hilinkd-bringup] %s\n' "$*"; }
+say() { printf '[pocketsms-bringup] %s\n' "$*"; }
 
 # 1. Out of ZeroCD, if it is still there.
 if command -v lsusb >/dev/null && lsusb | grep -q "$ZEROCD_IDS"; then

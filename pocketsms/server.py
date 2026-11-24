@@ -4,7 +4,7 @@ Two ways in:
 
 * **session cookie** - the web interface. A signed-in browser carries an opaque
   cookie; state-changing calls from the browser must also send
-  ``X-Requested-With: hilinkd``, which a cross-site form cannot do, so the cookie
+  ``X-Requested-With: pocketsms``, which a cross-site form cannot do, so the cookie
   is not exploitable by CSRF.
 * **API key** - everything else. ``X-API-Key: hkd_...`` with one of three scopes:
   ``sms`` (send/read messages, read the modem), ``otp`` (two-step verification),
@@ -29,7 +29,7 @@ from .otp import OtpError
 from .security import constant_eq, normalise_phone
 from .webui import page
 
-log = logging.getLogger("hilinkd.http")
+log = logging.getLogger("pocketsms.http")
 
 SESSION_COOKIE = NAME + "_session"
 CSRF_HEADER = "X-Requested-With"

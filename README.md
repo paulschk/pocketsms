@@ -1,6 +1,6 @@
 <div align="center">
 
-# hilinkd
+# pocketsms
 
 **A self-hosted SMS gateway for the 4G router your ISP gave you.**
 
@@ -28,7 +28,7 @@ Meanwhile there is probably a 4G router in a drawer, given away by an ISP with
 a mobile plan. It already has a SIM, a radio, and a SIM toolkit. What it lacks is
 a sane way to send and receive messages from your own software.
 
-**hilinkd gives you that.**
+**pocketsms gives you that.**
 
 - **An alert path that survives your ISP going down.** Monitoring that depends on
   a cloud SMS provider needs working internet to tell you the internet is broken.
@@ -43,7 +43,7 @@ a sane way to send and receive messages from your own software.
 ## Compatible hardware
 
 These devices are Huawei hardware running the **HiLink** firmware, which exposes a
-full XML API over HTTP. That is what hilinkd talks to. It does **not** need a serial
+full XML API over HTTP. That is what pocketsms talks to. It does **not** need a serial
 port, AT commands, or any device node.
 
 | Router | Operator | Status |
@@ -60,11 +60,11 @@ Two useful things about these French ISP routers:
 - **They are not SIM-locked.** French operators stopped locking equipment years
   ago, and if you have an older locked unit, the operator gives you the unlock code
   for free on request. Any SIM with a voice/SMS plan works.
-- **They are also Wi-Fi access points.** hilinkd uses the USB/HTTP path so the
+- **They are also Wi-Fi access points.** pocketsms uses the USB/HTTP path so the
   router's own hotspot stays available for whatever else you want it for.
 
 > If your modem shows up as `/dev/ttyUSB0` and answers `AT` commands, it is a plain
-> serial modem, not a HiLink device — hilinkd is the wrong tool. See
+> serial modem, not a HiLink device — pocketsms is the wrong tool. See
 > [prior art](#prior-art).
 
 ## Features
@@ -82,13 +82,13 @@ Two useful things about these French ISP routers:
 - **No dependencies.** Standard library only — nothing to keep patched, nothing to
   build, runs on a Raspberry Pi or a NAS
 - **Docker ready** (or plain systemd, your choice)
-- **`hilinkd doctor`**: one command that explains why the router is not answering
+- **`pocketsms doctor`**: one command that explains why the router is not answering
 
 ## Quick start
 
 ### 1. Make the router reachable (do not skip this)
 
-Two things trip everybody up, and hilinkd ships a script for both:
+Two things trip everybody up, and pocketsms ships a script for both:
 
 ```bash
 sudo ./scripts/bringup.sh
@@ -109,15 +109,15 @@ It is idempotent, so run it on every boot. For automatic recovery after a replug
 install the units and the udev rule:
 
 ```bash
-sudo mkdir -p /opt/hilinkd && sudo cp -r scripts /opt/hilinkd/
-sudo cp deploy/hilinkd-bringup.service /etc/systemd/system/
+sudo mkdir -p /opt/pocketsms && sudo cp -r scripts /opt/pocketsms/
+sudo cp deploy/pocketsms-bringup.service /etc/systemd/system/
 sudo cp deploy/99-airbox.rules /etc/udev/rules.d/
-sudo systemctl daemon-reload && sudo systemctl enable --now hilinkd-bringup
+sudo systemctl daemon-reload && sudo systemctl enable --now pocketsms-bringup
 ```
 
 > Your router is a different model? Check `lsusb` while it is cold and adjust the
 > USB IDs and the interface MAC in `deploy/99-airbox.rules`. If port 80 on
-> `192.168.1.1` is free on your LAN, pick a different `HILINKD_LOCAL_IP`.
+> `192.168.1.1` is free on your LAN, pick a different `POCKETSMS_LOCAL_IP`.
 
 ### 2. Run it
 
@@ -132,34 +132,34 @@ docker compose logs -f    # the first-run admin password is printed here
 **Bare metal:**
 
 ```bash
-sudo useradd --system --home /var/lib/hilinkd hilinkd
-sudo mkdir -p /var/lib/hilinkd && sudo chown hilinkd:hilinkd /var/lib/hilinkd
+sudo useradd --system --home /var/lib/pocketsms pocketsms
+sudo mkdir -p /var/lib/pocketsms && sudo chown pocketsms:pocketsms /var/lib/pocketsms
 sudo pip install .                       # or: pipx install .
-sudo -u hilinkd python3 -m hilinkd serve # prints the admin password on first run
+sudo -u pocketsms python3 -m pocketsms serve # prints the admin password on first run
 ```
 
-If you keep a config file at `/etc/hilinkd.conf`, it must be readable by the
+If you keep a config file at `/etc/pocketsms.conf`, it must be readable by the
 service account — it holds the router password, so do not make it world-readable:
 
 ```bash
-sudo chown root:hilinkd /etc/hilinkd.conf && sudo chmod 640 /etc/hilinkd.conf
+sudo chown root:pocketsms /etc/pocketsms.conf && sudo chmod 640 /etc/pocketsms.conf
 ```
 
 **systemd**, once installed:
 
 ```bash
-sudo cp deploy/hilinkd.service /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable --now hilinkd
+sudo cp deploy/pocketsms.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now pocketsms
 ```
 
 ### 3. Sign in
 
-Open `http://<host>:8090`. On first start hilinkd creates an `admin` account and
+Open `http://<host>:8090`. On first start pocketsms creates an `admin` account and
 prints the generated password **once**, in the log:
 
 ```
 ==============================================================
-  hilinkd: first run, an account has been created
+  pocketsms: first run, an account has been created
 
     username: admin
     password: 3Ykr9cQmQzVp
@@ -172,7 +172,7 @@ Set `ADMIN_PASSWORD` in the environment if you would rather choose it yourself.
 
 ## Configuration
 
-Every setting is an environment variable. `HILINKD_FOO` and `FOO` both work.
+Every setting is an environment variable. `POCKETSMS_FOO` and `FOO` both work.
 
 | Variable | Default | What it does |
 |---|---|---|
@@ -180,7 +180,7 @@ Every setting is an environment variable. `HILINKD_FOO` and `FOO` both work.
 | `MODEM_USER` / `MODEM_PASSWORD` | `admin` / `admin` | Router's web interface credentials |
 | `BIND` / `PORT` | `0.0.0.0` / `8090` | Where the API and the web UI listen |
 | `ADMIN_USER` / `ADMIN_PASSWORD` | `admin` / *generated* | First-run account |
-| `DATA_DIR` | `/data`, else `/var/lib/hilinkd` | Where the database lives |
+| `DATA_DIR` | `/data`, else `/var/lib/pocketsms` | Where the database lives |
 | `POLL_INTERVAL` | `15` | Seconds between inbound polls (HiLink has no push) |
 | `OTP_LENGTH` / `OTP_TTL` | `6` / `300` | Code length and lifetime |
 | `OTP_MAX_ATTEMPTS` / `OTP_MAX_PER_HOUR` | `5` / `5` | Brute-force and abuse limits, per phone number |
@@ -190,13 +190,13 @@ Every setting is an environment variable. `HILINKD_FOO` and `FOO` both work.
 | `WEBHOOK_URL` | — | Gets `{"from": "...", "text": "..."}` for every inbound SMS |
 | `LOG_LEVEL` | `info` | `debug` is verbose but explains what the router said |
 
-There is also `/etc/hilinkd.conf` (bare metal) or `.env` (Docker) if you prefer a
+There is also `/etc/pocketsms.conf` (bare metal) or `.env` (Docker) if you prefer a
 file. Environment wins over the file.
 
 ## API
 
 Authenticate with `X-API-Key: hkd_...` (create keys in the web UI or with
-`hilinkd key create grafana --scope otp`). The web UI uses a session cookie
+`pocketsms key create grafana --scope otp`). The web UI uses a session cookie
 instead.
 
 | Method | Path | Scope | What it does |
@@ -217,7 +217,7 @@ instead.
 # send a message
 curl -s http://localhost:8090/api/v1/messages \
   -H 'X-API-Key: hkd_...' -H 'Content-Type: application/json' \
-  -d '{"to":"0612345678","text":"hello from hilinkd"}'
+  -d '{"to":"0612345678","text":"hello from pocketsms"}'
 
 # read what came in
 curl -s 'http://localhost:8090/api/v1/messages?box=inbox&limit=20' -H 'X-API-Key: hkd_...'
@@ -236,7 +236,7 @@ hardware you own, with no provider in the middle.
 
 Flow:
 
-1. Your service posts the user's phone number to `/api/v1/otp`. hilinkd generates
+1. Your service posts the user's phone number to `/api/v1/otp`. pocketsms generates
    a code, stores only its hash, sends it by SMS, and returns a `challenge` id.
 2. Your service shows a "type the code" form.
 3. Your service posts the challenge id and the typed code to `/api/v1/otp/verify`.
@@ -278,7 +278,7 @@ grafana.example.com {
 ```
 
 The snippet behind `127.0.0.1:8091` keeps a signed cookie of its own and calls
-hilinkd's two endpoints. Whatever language you write it in, it is the same three
+pocketsms's two endpoints. Whatever language you write it in, it is the same three
 steps as above — that is the whole contract.
 
 ## Security notes
@@ -287,7 +287,7 @@ steps as above — that is the whole contract.
   API keys are stored as SHA-256 fingerprints; the plaintext is shown once.
 - Web sessions are opaque random tokens in an `HttpOnly; SameSite=Lax` cookie.
   Every state-changing call from a browser must also carry
-  `X-Requested-With: hilinkd`, which a cross-site form cannot set — so the cookie
+  `X-Requested-With: pocketsms`, which a cross-site form cannot set — so the cookie
   is not CSRF-exploitable.
 - Failed sign-ins are throttled per source address (10 per 5 minutes).
 - OTP codes are never logged, never returned by the API, and never stored in the
@@ -300,7 +300,7 @@ steps as above — that is the whole contract.
 
 ## Troubleshooting
 
-**Start with `hilinkd doctor`.** It checks the config, probes the router, the
+**Start with `pocketsms doctor`.** It checks the config, probes the router, the
 login, the SIM, the signal and the database, and tells you which step failed.
 
 | Symptom | Cause | Fix |
@@ -308,7 +308,7 @@ login, the SIM, the signal and the database, and tells you which step failed.
 | Router not answering at all | still in ZeroCD mass-storage mode | `sudo ./scripts/bringup.sh` |
 | Modem answered before, silent now | subnet collision, or the /32 route was lost on replug | re-run `bringup.sh`; check `ip route get 192.168.1.1` |
 | `login refused: error 108002` | wrong router password | set `MODEM_PASSWORD` (Orange Airbox default: `admin`) |
-| `error 100003` in the log | the session was not authenticated | harmless, hilinkd re-logs immediately |
+| `error 100003` in the log | the session was not authenticated | harmless, pocketsms re-logs immediately |
 | Messages arrive twice | should not happen | deduplication is by message fingerprint; if it does, open an issue |
 | Nothing ever arrives in the inbox | the router keeps SMS on the SIM only | check the router's own web page; some firmwares store per slot |
 | `state 902` in `/status` | no mobile data | **does not affect SMS** — the radio is registered |
@@ -316,8 +316,8 @@ login, the SIM, the signal and the database, and tells you which step failed.
 Useful commands:
 
 ```bash
-journalctl -u hilinkd -f            # live log
-hilinkd doctor                      # full diagnostic
+journalctl -u pocketsms -f            # live log
+pocketsms doctor                      # full diagnostic
 lsusb                               # 12d1:1f01 = still ZeroCD, 12d1:1c2b = ready
 ip route get 192.168.1.1            # must go out the router's interface
 curl -s http://192.168.1.1/api/webserver/SesTokInfo   # does the router answer at all?
@@ -325,7 +325,7 @@ curl -s http://192.168.1.1/api/webserver/SesTokInfo   # does the router answer a
 
 ## How it works
 
-These routers implement the Huawei HiLink XML API. hilinkd speaks it over HTTP
+These routers implement the Huawei HiLink XML API. pocketsms speaks it over HTTP
 instead of AT commands, because the hardware has no serial interface.
 
 The parts that are genuinely hard, and that this project already handles:
@@ -333,7 +333,7 @@ The parts that are genuinely hard, and that this project already handles:
 - Login is mandatory; the password is hashed as
   `base64(sha256hex(user + base64(sha256hex(password)) + token))`.
 - The CSRF token is **single-use**. Login returns a `#`-separated queue of about
-  thirty of them; hilinkd consumes one per request and re-authenticates when the
+  thirty of them; pocketsms consumes one per request and re-authenticates when the
   queue runs dry.
 - The authenticated session is the login response's `Set-Cookie`, **not** the
   `SessionID` that `SesTokInfo` hands out. Reusing the latter yields `100003`
@@ -341,20 +341,20 @@ The parts that are genuinely hard, and that this project already handles:
 - There is no push notification for inbound SMS, so polling plus fingerprint
   deduplication is the only correct design.
 
-`hilinkd/hilink.py` is a single self-contained client if you want to reuse it.
+`pocketsms/hilink.py` is a single self-contained client if you want to reuse it.
 
 ## Development
 
 ```bash
 python -m pytest -q          # no modem, no network needed
-python -m hilinkd doctor     # against your real router
+python -m pocketsms doctor     # against your real router
 ruff check .                 # optional
 ```
 
 Layout:
 
 ```
-hilinkd/
+pocketsms/
   __main__.py   CLI: serve, doctor, user, key
   config.py     settings and modem autodetection
   hilink.py     the HiLink client (start here)
@@ -367,14 +367,14 @@ scripts/bringup.sh    ZeroCD + /32 route
 deploy/               systemd units, udev rule
 ```
 
-Renaming the project is a `sed` away: the name lives in `hilinkd/__init__.py`,
+Renaming the project is a `sed` away: the name lives in `pocketsms/__init__.py`,
 `pyproject.toml` and the README.
 
 ## Prior art
 
 [mattboston/sms-gateway](https://github.com/mattboston/sms-gateway) is a good
 project doing the same job for **serial/AT modems** (`/dev/ttyUSB0`, `AT+CMGS`).
-If that is what you own, use it. hilinkd exists because ISP-provided routers are
+If that is what you own, use it. pocketsms exists because ISP-provided routers are
 not serial modems, and because the AT transport desynchronises the moment an
 unsolicited notification lands in the middle of a write.
 

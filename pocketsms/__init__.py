@@ -1,4 +1,4 @@
-"""hilinkd - a self-hosted SMS gateway for the 4G routers handed out by French ISPs.
+"""pocketsms - a self-hosted SMS gateway for the 4G routers handed out by French ISPs.
 
 The Orange Airbox, SFR's pocket routers and most ISP-branded 4G dongles are
 Huawei hardware running the HiLink firmware. That firmware exposes a full XML
@@ -13,7 +13,7 @@ these devices do not expose a serial interface at all.
 
 __version__ = "0.1.0"
 
-NAME = "hilinkd"
+NAME = "pocketsms"
 TAGLINE = "Self-hosted SMS gateway for ISP-provided 4G routers"
 DESCRIPTION = (
     "Send and receive SMS through the 4G router your ISP gave you "

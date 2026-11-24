@@ -1,0 +1,14 @@
+[Unit]
+Description=pocketsms bring-up: make the 4G router reachable
+Documentation=https://github.com/paulschk/pocketsms
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/pocketsms/scripts/bringup.sh
+# A failure must not stop the gateway: pocketsms retries the router on demand.
+SuccessExitStatus=0 1
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,31 @@
+[Unit]
+Description=pocketsms - SMS gateway for ISP-provided 4G routers
+Documentation=https://github.com/paulschk/pocketsms
+After=network-online.target pocketsms-bringup.service
+Wants=network-online.target pocketsms-bringup.service
+
+[Service]
+Type=simple
+User=pocketsms
+Group=pocketsms
+WorkingDirectory=/var/lib/pocketsms
+ExecStart=/usr/bin/python3 -m pocketsms serve --config /etc/pocketsms.conf
+Restart=always
+RestartSec=10
+Environment=POCKETSMS_DATA_DIR=/var/lib/pocketsms
+Environment=POCKETSMS_CONF=/etc/pocketsms.conf
+# The service talks HTTP to the router: no device node, no group membership,
+# no capabilities are needed.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+ReadWritePaths=/var/lib/pocketsms
+
+[Install]
+WantedBy=multi-user.target

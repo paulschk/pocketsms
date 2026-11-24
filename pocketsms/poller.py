@@ -14,7 +14,7 @@ import logging
 import threading
 import urllib.request
 
-log = logging.getLogger("hilinkd.poller")
+log = logging.getLogger("pocketsms.poller")
 
 #: BoxType on the HiLink API.
 BOX_INBOX = 1

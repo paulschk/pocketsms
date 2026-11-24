@@ -1,6 +1,6 @@
 """Command line entry point: serve, doctor, user, key.
 
-``python -m hilinkd serve`` is the service. ``doctor`` exists because the most
+``python -m pocketsms serve`` is the service. ``doctor`` exists because the most
 common failure with these routers is not the software at all - it is the router
 being unreachable, still in mass-storage mode, or sitting on a subnet that
 collides with the local LAN. doctor says which, in one screen.
@@ -245,8 +245,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog=NAME, description=DESCRIPTION)
     parser.add_argument("--version", action="version", version=f"{NAME} {__version__}")
     parser.add_argument("--config", help="path to the config file")
-    # The same flag on every subcommand, so `hilinkd serve --config X` works as
-    # well as `hilinkd --config X serve`. SUPPRESS keeps the global value when the
+    # The same flag on every subcommand, so `pocketsms serve --config X` works as
+    # well as `pocketsms --config X serve`. SUPPRESS keeps the global value when the
     # subcommand does not repeat it: a plain default would overwrite it.
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--config", default=argparse.SUPPRESS,

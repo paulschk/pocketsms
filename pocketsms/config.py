@@ -1,7 +1,7 @@
 """Configuration: environment first, config file second, sensible defaults always.
 
 Everything is overridable with an environment variable so Docker deployments need
-nothing but a compose file. Both ``HILINKD_FOO`` and the bare ``FOO`` spellings
+nothing but a compose file. Both ``POCKETSMS_FOO`` and the bare ``FOO`` spellings
 work, because nobody remembers the prefix on the first try.
 """
 

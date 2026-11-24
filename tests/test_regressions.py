@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from hilinkd.config import Config
-from hilinkd.server import SCOPE_FULL, Identity
+from pocketsms.config import Config
+from pocketsms.server import SCOPE_FULL, Identity
 
 
 # --------------------------------------------------------------------------- #
@@ -20,10 +20,10 @@ from hilinkd.server import SCOPE_FULL, Identity
 
 def test_config_file_keys_are_case_insensitive(tmp_path, monkeypatch):
     """The file uses UPPERCASE (like the environment); the defaults are lowercase."""
-    monkeypatch.setenv("HILINKD_DATA_DIR", str(tmp_path))
-    for name in ("BIND", "HILINKD_BIND", "PORT", "HILINKD_PORT"):
+    monkeypatch.setenv("POCKETSMS_DATA_DIR", str(tmp_path))
+    for name in ("BIND", "POCKETSMS_BIND", "PORT", "POCKETSMS_PORT"):
         monkeypatch.delenv(name, raising=False)
-    path = tmp_path / "hilinkd.conf"
+    path = tmp_path / "pocketsms.conf"
     path.write_text("# a comment\nBIND=127.0.0.1\nPORT=9999\notp_ttl=120\n\n")
 
     cfg = Config.load(str(path))
@@ -34,20 +34,20 @@ def test_config_file_keys_are_case_insensitive(tmp_path, monkeypatch):
 
 
 def test_environment_beats_the_config_file(tmp_path, monkeypatch):
-    monkeypatch.setenv("HILINKD_DATA_DIR", str(tmp_path))
-    path = tmp_path / "hilinkd.conf"
+    monkeypatch.setenv("POCKETSMS_DATA_DIR", str(tmp_path))
+    path = tmp_path / "pocketsms.conf"
     path.write_text("BIND=127.0.0.1\n")
-    monkeypatch.setenv("HILINKD_BIND", "10.0.0.1")
+    monkeypatch.setenv("POCKETSMS_BIND", "10.0.0.1")
     monkeypatch.setenv("PORT", "1234")
 
     cfg = Config.load(str(path))
-    assert cfg["bind"] == "10.0.0.1", "HILINKD_BIND must win over the file"
+    assert cfg["bind"] == "10.0.0.1", "POCKETSMS_BIND must win over the file"
     assert cfg["port"] == "1234", "the bare spelling must work too"
 
 
 def test_an_unreadable_config_file_is_not_a_crash(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("HILINKD_DATA_DIR", str(tmp_path))
-    path = tmp_path / "hilinkd.conf"
+    monkeypatch.setenv("POCKETSMS_DATA_DIR", str(tmp_path))
+    path = tmp_path / "pocketsms.conf"
     path.write_text("BIND=127.0.0.1\n")
     path.chmod(0o000)
     try:
@@ -98,8 +98,8 @@ def test_a_signed_in_user_is_not_an_admin_unless_flagged():
 
 def test_the_page_renders_all_its_placeholders():
     """An unrendered {placeholder} would show up verbatim in the browser."""
-    from hilinkd.webui import page
+    from pocketsms.webui import page
     html = page()
     for placeholder in ("{name}", "{tagline}", "{version}", "{admin_phone}"):
         assert placeholder not in html
-    assert "hilinkd" in html and "<style>" in html
+    assert "pocketsms" in html and "<style>" in html

@@ -30,7 +30,7 @@ import threading
 import urllib.error
 import urllib.request
 
-log = logging.getLogger("hilinkd.modem")
+log = logging.getLogger("pocketsms.modem")
 
 AUTH_ERRORS = ("100003", "125002", "125003")
 

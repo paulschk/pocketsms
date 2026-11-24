@@ -1,7 +1,7 @@
 """Two-step verification over SMS, for other services.
 
 The point of this module: any service you run (a reverse proxy, a dashboard, a
-runbook script) can ask hilinkd to (1) send a code to a phone number and (2)
+runbook script) can ask pocketsms to (1) send a code to a phone number and (2)
 verify the code the user typed. The code is never stored in plaintext, is
 single-use, expires, and is rate-limited per phone number.
 
@@ -19,7 +19,7 @@ import secrets
 from .security import mask_phone, new_code, new_token, normalise_phone
 from .store import now
 
-log = logging.getLogger("hilinkd.otp")
+log = logging.getLogger("pocketsms.otp")
 
 
 class OtpError(RuntimeError):

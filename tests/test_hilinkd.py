@@ -11,12 +11,12 @@ import re
 
 import pytest
 
-from hilinkd import security
-from hilinkd.config import DEFAULTS, Config
-from hilinkd.hilink import HiLink, xml_escape
-from hilinkd.otp import OtpError, OtpService
-from hilinkd.store import Store
-from hilinkd.webui import page
+from pocketsms import security
+from pocketsms.config import DEFAULTS, Config
+from pocketsms.hilink import HiLink, xml_escape
+from pocketsms.otp import OtpError, OtpService
+from pocketsms.store import Store
+from pocketsms.webui import page
 
 
 class FakeModem:

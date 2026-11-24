@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from .security import (hash_password, new_api_key, new_token, token_fingerprint,
                        verify_password)
 
-log = logging.getLogger("hilinkd.store")
+log = logging.getLogger("pocketsms.store")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
