@@ -151,7 +151,7 @@ def test_api_keys_store_only_a_fingerprint(store):
     plaintext, row = store.create_api_key("grafana", "otp")
     assert plaintext not in str(row)
     assert store.api_key_by_token(plaintext)["scope"] == "otp"
-    assert store.api_key_by_token("hkd_not_a_key") is None
+    assert store.api_key_by_token("pks_not_a_key") is None
     store.revoke_api_key(row["id"])
     assert store.api_key_by_token(plaintext) is None
 

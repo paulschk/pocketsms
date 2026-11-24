@@ -52,7 +52,7 @@ def token_fingerprint(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def new_api_key(prefix: str = "hkd") -> tuple[str, str]:
+def new_api_key(prefix: str = "pks") -> tuple[str, str]:
     """Return (plaintext key, display prefix). The plaintext is shown exactly once."""
     body = secrets.token_urlsafe(24)
     return f"{prefix}_{body}", f"{prefix}_{body[:6]}...{body[-4:]}"

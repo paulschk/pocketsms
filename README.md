@@ -195,7 +195,7 @@ file. Environment wins over the file.
 
 ## API
 
-Authenticate with `X-API-Key: hkd_...` (create keys in the web UI or with
+Authenticate with `X-API-Key: pks_...` (create keys in the web UI or with
 `pocketsms key create grafana --scope otp`). The web UI uses a session cookie
 instead.
 
@@ -216,14 +216,14 @@ instead.
 ```bash
 # send a message
 curl -s http://localhost:8090/api/v1/messages \
-  -H 'X-API-Key: hkd_...' -H 'Content-Type: application/json' \
+  -H 'X-API-Key: pks_...' -H 'Content-Type: application/json' \
   -d '{"to":"0612345678","text":"hello from pocketsms"}'
 
 # read what came in
-curl -s 'http://localhost:8090/api/v1/messages?box=inbox&limit=20' -H 'X-API-Key: hkd_...'
+curl -s 'http://localhost:8090/api/v1/messages?box=inbox&limit=20' -H 'X-API-Key: pks_...'
 
 # ask the router how it is doing
-curl -s http://localhost:8090/api/v1/status -H 'X-API-Key: hkd_...'
+curl -s http://localhost:8090/api/v1/status -H 'X-API-Key: pks_...'
 ```
 
 Numbers are normalised for you: `06 65 42 39 89`, `0665423989` and `+33665423989`
@@ -249,13 +249,13 @@ is capped per hour (`OTP_MAX_PER_HOUR`).
 
 ```bash
 # 1. send
-curl -s http://localhost:8090/api/v1/otp -H 'X-API-Key: hkd_...' \
+curl -s http://localhost:8090/api/v1/otp -H 'X-API-Key: pks_...' \
   -H 'Content-Type: application/json' \
   -d '{"phone":"0612345678","service":"grafana"}'
 # => {"challenge":"kJ2f...","phone":"+336****989","digits":6,"expires_in":300}
 
 # 2. verify
-curl -s http://localhost:8090/api/v1/otp/verify -H 'X-API-Key: hkd_...' \
+curl -s http://localhost:8090/api/v1/otp/verify -H 'X-API-Key: pks_...' \
   -H 'Content-Type: application/json' \
   -d '{"challenge":"kJ2f...","code":"123456"}'
 # => {"verified":true,...}   or  401 {"error":"invalid_code","detail":"2 attempt(s) left"}
