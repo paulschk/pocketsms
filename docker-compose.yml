@@ -10,8 +10,8 @@
 services:
   pocketsms:
     build: .
-    # Published image, once you have pushed one: uncomment and drop `build`.
-    # image: ghcr.io/paulschk/pocketsms:latest
+    # CI publishes this for you: ghcr.io/paulschk/pocketsms:latest (amd64 and
+    # arm64). Swap `build: .` for `image:` to pull instead of build.
     container_name: pocketsms
     restart: unless-stopped
 
