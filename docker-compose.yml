@@ -1,0 +1,35 @@
+# hilinkd in one file.
+#
+#   cp .env.example .env      # optional: defaults work out of the box
+#   docker compose up -d
+#   docker compose logs -f    # the first-run admin password is printed here
+#
+# On first start the admin password is generated and printed once. Copy it, sign
+# in on http://<host>:8090, then change it in Settings.
+
+services:
+  hilinkd:
+    build: .
+    # Published image, once you have pushed one: uncomment and drop `build`.
+    # image: ghcr.io/CHANGE-ME/hilinkd:latest
+    container_name: hilinkd
+    restart: unless-stopped
+
+    # The router advertises its own LAN (192.168.1.0/24 on most French ISP
+    # boxes, which is also the subnet of a typical home network). Sharing the
+    # host's network stack is what lets the container reach it at all, and it
+    # keeps the port published on the LAN exactly where you expect it.
+    network_mode: host
+
+    env_file:
+      - .env
+    volumes:
+      - hilinkd-data:/data
+
+    # No devices, no capabilities, no privileged mode: the modem is spoken to
+    # over HTTP like any other host on the network.
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  hilinkd-data:

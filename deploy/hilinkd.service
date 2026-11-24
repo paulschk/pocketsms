@@ -1,0 +1,31 @@
+[Unit]
+Description=hilinkd - SMS gateway for ISP-provided 4G routers
+Documentation=https://github.com/CHANGE-ME/hilinkd
+After=network-online.target hilinkd-bringup.service
+Wants=network-online.target hilinkd-bringup.service
+
+[Service]
+Type=simple
+User=hilinkd
+Group=hilinkd
+WorkingDirectory=/var/lib/hilinkd
+ExecStart=/usr/bin/python3 -m hilinkd serve --config /etc/hilinkd.conf
+Restart=always
+RestartSec=10
+Environment=HILINKD_DATA_DIR=/var/lib/hilinkd
+Environment=HILINKD_CONF=/etc/hilinkd.conf
+# The service talks HTTP to the router: no device node, no group membership,
+# no capabilities are needed.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+ReadWritePaths=/var/lib/hilinkd
+
+[Install]
+WantedBy=multi-user.target

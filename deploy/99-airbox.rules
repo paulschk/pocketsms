@@ -1,0 +1,13 @@
+# Switch the 4G router out of ZeroCD mass-storage mode and route to it, on
+# every replug. Both actions are idempotent; see scripts/bringup.sh.
+#
+# The USB IDs below cover the Orange Airbox / Huawei E5573 family. Add a line
+# for your own model if it differs (`lsusb` while the router is cold).
+
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="12d1", ATTR{idProduct}=="1f01", \
+  RUN+="/usr/bin/systemctl --no-block restart hilinkd-bringup.service"
+
+# The CDC-Ethernet interface comes back with no address after a replug: re-apply
+# the /32 route. Match on the vendor MAC of your own router.
+ACTION=="add", SUBSYSTEM=="net", ATTR{address}=="0c:5b:8f:27:9a:64", \
+  RUN+="/usr/bin/systemctl --no-block restart hilinkd-bringup.service"
