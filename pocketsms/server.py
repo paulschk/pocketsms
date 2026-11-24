@@ -36,6 +36,9 @@ CSRF_HEADER = "X-Requested-With"
 CSRF_VALUE = NAME
 SCOPE_SMS, SCOPE_OTP, SCOPE_FULL = "sms", "otp", "full"
 
+#: Refuse absurd bodies rather than allocate for them.
+MAX_BODY_BYTES = 1 << 20  # 1 MiB
+
 LOGIN_WINDOW = 300.0     # seconds
 LOGIN_MAX_FAILURES = 10  # per source address, per window
 
@@ -174,26 +177,60 @@ class Handler(BaseHTTPRequestHandler):
         for key, value in (extra_headers or {}).items():
             self.send_header(key, value)
         self.end_headers()
-        self.wfile.write(payload)
+        if self.command != "HEAD":      # a HEAD reply carries headers, never a body
+            self.wfile.write(payload)
 
     def _json(self, status: int, payload, extra_headers: dict | None = None) -> None:
         self._send(status, json.dumps(payload, ensure_ascii=False).encode(),
                    "application/json; charset=utf-8", extra_headers)
 
     def log_message(self, fmt: str, *args) -> None:
-        log.info("%s %s", self.address_string(), fmt % args)
+        """Quiet by default: successful requests only surface at debug level.
+
+        A polling client (the web UI every 15 s, the container healthcheck every
+        30 s) would otherwise bury every line that matters. Failures stay visible:
+        4xx as warnings, 5xx as errors. Run with LOG_LEVEL=debug to see it all.
+        """
+        try:
+            status = int(args[1])
+        except (IndexError, ValueError, TypeError):
+            status = 0
+        line = f"{self.address_string()} {fmt % args}"
+        if status >= 500:
+            log.error(line)
+        elif status >= 400:
+            log.warning(line)
+        else:
+            log.debug(line)
 
     # -- input helpers ------------------------------------------------------- #
 
-    def _body(self) -> dict:
+    def _read_body(self) -> bytes:
+        """Read the request body once, always, whatever the endpoint does with it.
+
+        Skipping this on a path that ignores the body (logout, and every early
+        401/403/404) leaves the bytes sitting in the socket. On a keep-alive
+        connection the next request line is then parsed as ``{}GET / HTTP/1.1``,
+        and the client gets a baffling 501 after a request that succeeded.
+        Draining up front is what keeps the framing honest.
+        """
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             length = 0
-        if not length:
+        if length <= 0:
+            return b""
+        if length > MAX_BODY_BYTES:
+            self.close_connection = True
+            raise ApiError(413, "body_too_large", f"limit is {MAX_BODY_BYTES} bytes")
+        return self.rfile.read(length)
+
+    def _body(self) -> dict:
+        raw = getattr(self, "_raw", b"")
+        if not raw:
             return {}
         try:
-            parsed = json.loads(self.rfile.read(length) or b"{}")
+            parsed = json.loads(raw)
             return parsed if isinstance(parsed, dict) else {}
         except (json.JSONDecodeError, UnicodeDecodeError):
             raise ApiError(400, "invalid_json") from None
@@ -242,6 +279,14 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:  # noqa: N802
         self._handle("DELETE")
 
+    def do_HEAD(self) -> None:  # noqa: N802
+        """Answer like GET, headers only. Never 501: monitoring tools send HEAD."""
+        self._handle("GET")
+
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        """Advertise what is allowed instead of a bare 501."""
+        self._send(204, b"", "text/plain", {"Allow": "GET, HEAD, POST, DELETE, OPTIONS"})
+
     def _handle(self, method: str) -> None:
         app: App = self.server.app          # type: ignore[attr-defined]
         parsed = urllib.parse.urlparse(self.path)
@@ -249,6 +294,9 @@ class Handler(BaseHTTPRequestHandler):
         query = urllib.parse.parse_qs(parsed.query)
 
         try:
+            # Before anything else, and before any early return: the body is read
+            # here so the connection framing survives whatever happens next.
+            self._raw = self._read_body()
             identity = self._identity() if path.startswith("/api/") else Identity("anonymous")
 
             # --- public ---------------------------------------------------- #

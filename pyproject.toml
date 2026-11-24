@@ -36,6 +36,11 @@ pocketsms = "pocketsms.__main__:main"
 [tool.setuptools]
 packages = ["pocketsms"]
 
+# The web interface is a real .html file next to the module: it must ship with
+# the package or every page request would 404.
+[tool.setuptools.package-data]
+pocketsms = ["webui.html"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py39"

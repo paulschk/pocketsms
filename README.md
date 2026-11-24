@@ -362,7 +362,8 @@ pocketsms/
   otp.py        two-step verification
   poller.py     inbound polling and relays
   server.py     HTTP routing, auth, scopes
-  webui.py      the whole web interface, inlined
+  webui.py      renders the page, injecting name and version
+  webui.html    the whole web interface, inlined
 scripts/bringup.sh    ZeroCD + /32 route
 deploy/               systemd units, udev rule
 ```

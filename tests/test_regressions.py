@@ -97,9 +97,98 @@ def test_a_signed_in_user_is_not_an_admin_unless_flagged():
 
 
 def test_the_page_renders_all_its_placeholders():
-    """An unrendered {placeholder} would show up verbatim in the browser."""
+    """An unrendered token would show up verbatim in the browser."""
     from pocketsms.webui import page
     html = page()
-    for placeholder in ("{name}", "{tagline}", "{version}", "{admin_phone}"):
-        assert placeholder not in html
+    for token in ("__NAME__", "__TAGLINE__", "__VERSION__"):
+        assert token not in html
     assert "pocketsms" in html and "<style>" in html
+
+
+def test_a_post_body_is_drained_even_when_the_endpoint_ignores_it(tmp_path):
+    """The bug: an unread body corrupts the next request on a keep-alive socket.
+
+    Signing out answers 200, the browser then reloads on the same connection,
+    and the leftover ``{}`` made the next request line read ``{}GET / HTTP/1.1``
+    - a 501 right after a successful call.
+    """
+    import http.client
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    from pocketsms.config import DEFAULTS, Config
+    from pocketsms.hilink import HiLink
+    from pocketsms.otp import OtpService
+    from pocketsms.server import Handler
+    from pocketsms.store import Store
+
+    config = Config(DEFAULTS)
+    config.update({"data_dir": str(tmp_path), "bind": "127.0.0.1", "port": "0"})
+    store = Store(str(tmp_path / "t.db"))
+    modem = HiLink("http://127.0.0.1:1", "admin", "admin", timeout=1)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.daemon_threads = True
+    server.app = server_app = __import__("pocketsms.server", fromlist=["App"]).App(
+        config, store, modem, OtpService(modem, store, config))
+    server.store = store
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    try:
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        # A POST that returns early (401: no credentials) and never reads the body.
+        connection.request("POST", "/api/v1/auth/logout", body=b"{}",
+                           headers={"Content-Type": "application/json"})
+        first = connection.getresponse()
+        first.read()
+        assert first.status == 401
+        # Same connection, next request: this is where the framing used to break.
+        connection.request("GET", "/api/v1/health")
+        second = connection.getresponse()
+        body = second.read()
+        assert second.status == 200, f"framing broken: {second.status} {body!r}"
+        assert b'"ok"' in body
+        connection.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        store.close()
+
+
+def test_head_and_options_never_answer_501(tmp_path):
+    """Monitoring tools send HEAD; a bare 501 is not a useful answer."""
+    import http.client
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    from pocketsms.config import DEFAULTS, Config
+    from pocketsms.hilink import HiLink
+    from pocketsms.otp import OtpService
+    from pocketsms.server import App, Handler
+    from pocketsms.store import Store
+
+    config = Config(DEFAULTS)
+    config.update({"data_dir": str(tmp_path), "bind": "127.0.0.1", "port": "0"})
+    store = Store(str(tmp_path / "h.db"))
+    modem = HiLink("http://127.0.0.1:1", "admin", "admin", timeout=1)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.daemon_threads = True
+    server.app = App(config, store, modem, OtpService(modem, store, config))
+    server.store = store
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    try:
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        connection.request("HEAD", "/")
+        head = connection.getresponse()
+        head.read()
+        assert head.status == 200, head.status
+        connection.request("OPTIONS", "/api/v1/status")
+        options = connection.getresponse()
+        options.read()
+        assert options.status == 204, options.status
+        assert "HEAD" in options.getheader("Allow", "")
+        connection.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        store.close()
