@@ -25,6 +25,8 @@ INTERVAL="${INTERVAL:-10}"
 FAIL_AFTER="${FAIL_AFTER:-3}"
 RECOVER_AFTER="${RECOVER_AFTER:-2}"
 FALLBACK_DNS="${FALLBACK_DNS:-1.1.1.1 8.8.8.8}"
+REPORT_ATTEMPTS="${REPORT_ATTEMPTS:-6}"       # the service may still be starting
+REPORT_RETRY_DELAY="${REPORT_RETRY_DELAY:-3}"
 POCKETSMS_URL="${POCKETSMS_URL:-}"
 POCKETSMS_API_KEY="${POCKETSMS_API_KEY:-}"
 DRY_RUN="${DRY_RUN:-0}"
@@ -76,13 +78,23 @@ report() {
   fi
   body=$(printf '{"cable":"%s","detail":"%s","quiet":%s}' "$cable" \
                  "$(json_detail "$detail")" "$quiet")
-  if curl -s -o /dev/null --max-time 10 -X POST "$POCKETSMS_URL/api/v1/line" \
-       -H "X-API-Key: $POCKETSMS_API_KEY" -H 'Content-Type: application/json' \
-       --data "$body"; then
-    log "$cable: reported to pocketsms"
-  else
-    log "$cable: could not reach pocketsms at $POCKETSMS_URL"
-  fi
+  # Retry: the two containers start together, and pocketsms needs a few seconds to
+  # listen, so the first report of a session used to be dropped into the void. An
+  # alert nobody receives because of a startup race is not an alert.
+  local attempt=1
+  while [ "$attempt" -le "$REPORT_ATTEMPTS" ]; do
+    if curl -s -o /dev/null --max-time 10 -X POST "$POCKETSMS_URL/api/v1/line" \
+         -H "X-API-Key: $POCKETSMS_API_KEY" -H 'Content-Type: application/json' \
+         --data "$body"; then
+      log "$cable: reported to pocketsms"
+      return 0
+    fi
+    log "$cable: pocketsms not answering at $POCKETSMS_URL (attempt $attempt/$REPORT_ATTEMPTS)"
+    attempt=$((attempt + 1))
+    sleep "$REPORT_RETRY_DELAY"
+  done
+  log "$cable: gave up reaching pocketsms at $POCKETSMS_URL"
+  return 1
 }
 
 use_fallback_dns() {
