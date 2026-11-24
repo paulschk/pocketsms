@@ -75,6 +75,12 @@ nav.tabs .count { font-size: 11px; color: var(--muted); margin-left: 5px; }
 
 /* ---------- cards and forms ---------- */
 .grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+/* Settings stacks full width: side by side, a 3-column grid stretched two short
+   cards to the height of a tall one and left the fourth alone on its own row. */
+.stack { display: grid; gap: 18px; }
+.grid-2 { display: grid; gap: 14px; align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.grid-2 .field.wide { grid-column: 1 / -1; }
 .card {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 18px; box-shadow: var(--shadow);
@@ -286,7 +292,21 @@ footer { max-width: 1040px; margin: 0 auto; padding: 0 20px 40px; color: var(--m
     </section>
 
     <section id="tab-settings" class="hidden">
-      <div class="grid">
+      <div class="stack">
+        <div class="card" id="card-line">
+          <h2>Line monitoring</h2>
+          <p class="note" style="margin-top:0">When the watcher on the host reports that the
+            primary connection dropped, pocketsms texts this number. Leave it empty and
+            nothing is sent.</p>
+          <div class="grid-2" id="line-fields"><div class="note">loading...</div></div>
+          <div class="row" style="margin-top:16px">
+            <button class="btn" id="line-save">Save</button>
+            <button class="btn ghost" id="line-test">Send a test SMS</button>
+            <span class="note" id="line-note"></span>
+          </div>
+          <div class="note" id="line-status"></div>
+        </div>
+
         <div class="card" id="card-keys">
           <h2>API keys</h2>
           <div class="row">
@@ -310,26 +330,14 @@ footer { max-width: 1040px; margin: 0 auto; padding: 0 20px 40px; color: var(--m
           <table style="margin-top:14px"><thead><tr><th>User</th><th>Role</th><th></th></tr></thead>
             <tbody id="users"></tbody></table>
         </div>
-        <div class="card" id="card-line">
-          <h2>Line monitoring</h2>
-          <p class="note" style="margin-top:0">When the watcher on the host reports that the
-            primary connection dropped, pocketsms texts this number. Leave it empty and
-            nothing is sent.</p>
-          <div id="line-fields"><div class="note">loading...</div></div>
-          <div class="row" style="margin-top:16px">
-            <button class="btn" id="line-save">Save</button>
-            <button class="btn ghost" id="line-test">Send a test SMS</button>
-            <span class="note" id="line-note"></span>
-          </div>
-          <div class="note" id="line-status"></div>
-        </div>
-
         <div class="card">
           <h2>Change my password</h2>
-          <div class="field"><label for="pw-current">Current password</label>
-            <input id="pw-current" type="password" autocomplete="current-password"></div>
-          <div class="field"><label for="pw-new">New password</label>
-            <input id="pw-new" type="password" autocomplete="new-password"></div>
+          <div class="grid-2">
+            <div class="field"><label for="pw-current">Current password</label>
+              <input id="pw-current" type="password" autocomplete="current-password"></div>
+            <div class="field"><label for="pw-new">New password</label>
+              <input id="pw-new" type="password" autocomplete="new-password"></div>
+          </div>
           <div class="row" style="margin-top:14px"><button class="btn ghost" id="pw-save">Update</button>
             <span class="note" id="pw-note"></span></div>
         </div>
@@ -652,7 +660,8 @@ async function loadLineSettings() {
       } else {
         control = '<input id="' + id + '"' + (s.kind === 'phone' ? ' inputmode="tel"' : '') + '>';
       }
-      return '<div class="field"><label for="' + id + '">' + esc(s.label) + '</label>'
+      return '<div class="field' + (s.kind === 'text' ? ' wide' : '') + '">'
+        + '<label for="' + id + '">' + esc(s.label) + '</label>'
         + control + '<div class="note" style="margin-top:4px">' + esc(s.help) + '</div></div>';
     }).join('');
     // Values go in after the markup exists, so a value containing quotes cannot break it.

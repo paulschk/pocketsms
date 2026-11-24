@@ -1,5 +1,7 @@
-# pocketsms runs with no dependencies at all, so the image is short: the Python
-# standard library is the whole runtime.
+# pocketsms itself has no dependencies: the Python standard library is the whole
+# runtime. iproute2 and curl are here for the *optional* failover watcher
+# (scripts/line-watch.sh), which reaches the image through a compose profile so it
+# can be deployed without installing anything on the host.
 FROM python:3.13-slim
 
 LABEL org.opencontainers.image.title="pocketsms" \
@@ -13,8 +15,16 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# Not for the service: it speaks HTTP and needs neither. These are what `ip route`
+# and the cable-bound probe need, for the optional line-watch profile.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends iproute2 curl \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml README.md ./
 COPY pocketsms ./pocketsms
+COPY scripts ./scripts
+COPY deploy ./deploy
 RUN pip install --no-cache-dir --no-compile .
 
 # An unprivileged account: the service never needs to be root. It talks HTTP to

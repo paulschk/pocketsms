@@ -4,14 +4,24 @@
 #   docker compose up -d
 #   docker compose logs -f    # the first-run admin password is printed here
 #
+# The default stack is the SMS service alone, and it runs unprivileged on purpose:
+# no capabilities, no devices, no privileged mode.
+#
+# The 4G failover watcher is opt-in, because it is the one part that needs
+# privileges - it changes the host's routing table and resolvers:
+#
+#   docker compose --profile failover up -d
+#
 # On first start the admin password is generated and printed once. Copy it, sign
 # in on http://<host>:8090, then change it in Settings.
 
 services:
   pocketsms:
+    # One image for everything: `build` tags it under the published name, so a
+    # local build and a pulled image are the same reference. Drop `build` to pull
+    # instead of build.
+    image: ghcr.io/paulschk/pocketsms:latest
     build: .
-    # CI publishes this for you: ghcr.io/paulschk/pocketsms:latest (amd64 and
-    # arm64). Swap `build: .` for `image:` to pull instead of build.
     container_name: pocketsms
     restart: unless-stopped
 
@@ -35,5 +45,39 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # Watch the primary connection and move the default route to the 4G router when
+  # it dies, then report it so pocketsms can text you. Enable with the profile:
+  #
+  #   docker compose --profile failover up -d
+  #
+  # It needs /etc/pocketsms-line-watch.conf (mode 600 - it holds an API key) and a
+  # holder of the /32 address the bring-up script assigned. See the README.
+  line-watch:
+    image: ghcr.io/paulschk/pocketsms:latest
+    profiles: ["failover"]
+    container_name: pocketsms-line-watch
+    restart: unless-stopped
+    network_mode: host          # it acts on the host's routing table, not its own
+    entrypoint: ["/app/scripts/line-watch.sh"]
+    # Root, because it rewrites root-owned files (/etc/resolv.conf) and the routing
+    # table. Note that capabilities only mean anything to a root process, and that
+    # everything else is dropped first: this container has two capabilities, not
+    # the default set.
+    user: "0:0"
+    cap_drop: [ALL]
+    cap_add:
+      - NET_ADMIN               # to change the host's routing table
+      - NET_RAW                 # SO_BINDTODEVICE: probe the cable, not the fallback
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      # The watcher swaps the resolvers when it fails over: the ISP box is still on
+      # the LAN but its upstream is gone, so name resolution through it dies with
+      # the line. The container's own copy of this file would be useless.
+      - /etc/resolv.conf:/etc/resolv.conf
+      - /etc/pocketsms-line-watch.conf:/etc/pocketsms-line-watch.conf:ro
+      - pocketsms-watch:/run/pocketsms-line-watch
+
 volumes:
   pocketsms-data:
+  pocketsms-watch:
