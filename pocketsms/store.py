@@ -77,6 +77,12 @@ CREATE TABLE IF NOT EXISTS otp_events (
     phone      TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 
@@ -256,7 +262,7 @@ class Store:
         direction = "in" if box in ("inbox", "in") else "out"
         with self.lock:
             rows = self.db.execute(
-                "SELECT id, phone, text, status, detail, created_at FROM messages"
+                "SELECT id, direction, phone, text, status, detail, created_at FROM messages"
                 " WHERE direction = ? ORDER BY id DESC LIMIT ? OFFSET ?",
                 (direction, limit, offset)).fetchall()
         return [dict(row) for row in rows]
@@ -275,6 +281,32 @@ class Store:
         for row in rows:
             stats[row["direction"]] = row["n"]
         return stats
+
+    # -- runtime settings --------------------------------------------------- #
+
+    def settings(self) -> dict:
+        """Every stored override, as a plain dict."""
+        with self.lock:
+            rows = self.db.execute("SELECT key, value FROM settings").fetchall()
+        return {row["key"]: row["value"] for row in rows}
+
+    def setting(self, key: str) -> str | None:
+        with self.lock:
+            row = self.db.execute("SELECT value FROM settings WHERE key = ?",
+                                  (key,)).fetchone()
+        return row["value"] if row else None
+
+    def save_settings(self, values: dict) -> None:
+        """Store overrides. They outrank the environment on purpose: an
+        administrator who changes a setting in the UI expects it to stay changed."""
+        with self.lock:
+            for key, value in values.items():
+                self.db.execute(
+                    "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)"
+                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value,"
+                    " updated_at = excluded.updated_at",
+                    (key, str(value), now()))
+            self.db.commit()
 
     # -- OTP --------------------------------------------------------------- #
 

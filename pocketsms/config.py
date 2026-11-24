@@ -23,6 +23,45 @@ DEFAULT_MODEM_CANDIDATES = (
     "http://192.168.100.1",
 )
 
+#: Settings an administrator may change from the web UI. They live in the
+#: database and are layered over the environment, so a change survives a restart
+#: without editing a file - which matters in a container that mounts only /data.
+EDITABLE = {
+    "line_alert_phone": {
+        "label": "Owner phone number",
+        "help": "Where the line-down alert is texted. Empty disables alerts.",
+        "kind": "phone",
+        "default": "",
+    },
+    "line_alert_cooldown": {
+        "label": "Repeat at most every (seconds)",
+        "help": "Minimum gap between two alerts for the same outage.",
+        "kind": "int",
+        "default": "1800",
+        "min": 60,
+        "max": 86400,
+    },
+    "line_alert_on_recovery": {
+        "label": "Text me when the line comes back",
+        "help": "Sends a second message once the primary connection is up again.",
+        "kind": "bool",
+        "default": "true",
+    },
+    "line_down_message": {
+        "label": "Line-down message",
+        "help": "Placeholders: {time} and {detail}.",
+        "kind": "text",
+        "default": "pocketsms: la ligne principale est tombee ({time}). Bascule 4G en cours.",
+    },
+    "line_up_message": {
+        "label": "Recovery message",
+        "help": "Placeholders: {time} and {detail}.",
+        "kind": "text",
+        "default": "pocketsms: la ligne principale est revenue ({time}).",
+    },
+}
+
+
 DEFAULTS = {
     # --- modem -------------------------------------------------------------
     "modem_url": "",              # empty = autodetect from the candidates above
@@ -54,6 +93,12 @@ DEFAULTS = {
     "webhook_url": "",            # POSTed for every inbound SMS
     # --- misc --------------------------------------------------------------
     "log_level": "info",
+    # --- line monitoring --------------------------------------------------- #
+    # Defaults come from EDITABLE: one source of truth for what the web UI shows
+    # and what the environment may override, so the two cannot drift apart.
+    # Config.load only scans DEFAULTS for environment variables, so a key that
+    # lives only in EDITABLE could not be set from the environment at all.
+    **{key: spec["default"] for key, spec in EDITABLE.items()},
 }
 
 

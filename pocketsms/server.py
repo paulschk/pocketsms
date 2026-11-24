@@ -26,6 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from . import NAME, __version__
 from .hilink import ModemError
 from .otp import OtpError
+from .config import EDITABLE
 from .security import constant_eq, normalise_phone
 from .webui import page
 
@@ -100,6 +101,7 @@ class App:
             "error": getattr(self.poller, "last_error", None),
             "received": getattr(self.poller, "seen", 0),
         }
+        snapshot["line"] = self.line_state()
         return snapshot
 
     def list_messages(self, box: str, limit: int, offset: int) -> dict:
@@ -120,6 +122,135 @@ class App:
             raise ApiError(502, "modem_error", str(exc)) from exc
         message_id = self.store.add_message("out", number, text, status="accepted")
         return {"ok": True, "id": message_id, "to": number, "accepted": True}
+
+    # -- runtime settings ---------------------------------------------------- #
+
+    def setting(self, key: str) -> str:
+        """A UI-editable setting: database override, then environment, then default."""
+        stored = self.store.setting(key)
+        if stored is not None:
+            return stored
+        return str(self.cfg.get(key) or EDITABLE.get(key, {}).get("default", ""))
+
+    def _flag(self, key: str) -> bool:
+        return self.setting(key).strip().lower() in ("1", "true", "yes", "on")
+
+    def settings_payload(self) -> dict:
+        return {"settings": [
+            {
+                "key": key,
+                "label": spec["label"],
+                "help": spec["help"],
+                "kind": spec["kind"],
+                "value": self.setting(key),
+                "source": "database" if self.store.setting(key) is not None else "environment",
+            }
+            for key, spec in EDITABLE.items()
+        ]}
+
+    def save_settings(self, payload: dict) -> dict:
+        """Validate, then store. Unknown keys are refused rather than dropped:
+        silently ignoring a typo is how a setting ends up "not working"."""
+        unknown = sorted(set(payload) - set(EDITABLE))
+        if unknown:
+            raise ApiError(400, "unknown_setting", ", ".join(unknown))
+        values = {}
+        for key, raw in payload.items():
+            spec = EDITABLE[key]
+            value = str(raw).strip()
+            if spec["kind"] == "int":
+                if not value.isdigit():
+                    raise ApiError(400, "invalid_setting", f"{key} must be a whole number")
+                number = int(value)
+                if not spec["min"] <= number <= spec["max"]:
+                    raise ApiError(400, "invalid_setting",
+                                   f"{key} must be between {spec['min']} and {spec['max']}")
+                value = str(number)
+            elif spec["kind"] == "bool":
+                value = "true" if value.lower() in ("1", "true", "yes", "on") else "false"
+            elif spec["kind"] == "phone" and value:
+                value = normalise_phone(value)
+                if not value:
+                    raise ApiError(400, "invalid_setting", f"{key} is not a usable number")
+            values[key] = value
+        self.store.save_settings(values)
+        log.info("settings updated: %s", ", ".join(sorted(values)))
+        return self.settings_payload()
+
+    def test_line_alert(self) -> dict:
+        """Send the line-down message now, so the path is proven before it matters."""
+        phone = self.setting("line_alert_phone")
+        if not phone:
+            raise ApiError(400, "no_owner_phone", "set the owner phone number first")
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        # Marked, or a test would be indistinguishable from the real thing and the
+        # recipient would reasonably think the line had just dropped.
+        text = ("[test] " + self.setting("line_down_message")
+                .replace("{time}", stamp).replace("{detail}", "").strip()).strip()
+        result = self.send(phone, text)
+        return {"ok": True, "to": phone, "text": text, "id": result.get("id")}
+
+    # -- the primary line ---------------------------------------------------- #
+
+    def line_state(self) -> dict:
+        """What the host-side watcher last reported, and when we last texted."""
+        return {
+            "state": self.store.setting("_line_state") or "unknown",
+            "detail": self.store.setting("_line_detail") or "",
+            "changed_at": self.store.setting("_line_changed_at"),
+            "last_alert_at": self.store.setting("_line_last_alert_at"),
+        }
+
+    def report_line(self, cable: str, detail: str = "", quiet: bool = False) -> dict:
+        """The watcher reports the primary line up or down; we do the texting.
+
+        Detection lives on the host on purpose: proving the *cable* path needs
+        SO_BINDTODEVICE, which needs a capability this service deliberately does
+        not hold. The phone number and the modem, on the other hand, are here.
+        """
+        if cable not in ("up", "down", "unknown"):
+            raise ApiError(400, "invalid_state", "cable must be up, down or unknown")
+        previous = self.store.setting("_line_state") or "unknown"
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        self.store.save_settings({"_line_state": cable, "_line_detail": detail[:200],
+                                  "_line_changed_at": stamp})
+
+        if quiet:
+            # State sync, not news: the dashboard stops lying after a restart and
+            # nobody gets a text for it.
+            return {"ok": True, "state": self.line_state(), "notified": False,
+                    "reason": "state synchronised without announcing"}
+        phone, notified, reason = self.setting("line_alert_phone"), False, ""
+        announce = ((cable == "down" and (previous != "down" or self._cooldown_elapsed()))
+                    or (cable == "up" and previous == "down"
+                        and self._flag("line_alert_on_recovery")))
+        if not phone:
+            reason = "no owner phone number configured"
+        elif not announce:
+            reason = "nothing to announce"
+        else:
+            template = self.setting("line_down_message" if cable == "down"
+                                    else "line_up_message")
+            text = template.replace("{time}", stamp).replace("{detail}", detail or "").strip()
+            try:
+                self.send(phone, text)
+                notified = True
+                self.store.save_settings({"_line_last_alert_at": stamp})
+            except ApiError as exc:
+                reason = f"could not send: {exc.detail or exc.reason}"
+                log.warning("line alert not sent: %s", reason)
+        return {"ok": True, "state": self.line_state(), "notified": notified, "reason": reason}
+
+    def _cooldown_elapsed(self) -> bool:
+        last = self.store.setting("_line_last_alert_at")
+        if not last:
+            return True
+        try:
+            since = time.mktime(time.strptime(last, "%Y-%m-%d %H:%M:%S"))
+            window = int(self.setting("line_alert_cooldown"))
+        except (ValueError, TypeError):
+            return True
+        return (time.time() - since) >= window
 
     # -- authentication ------------------------------------------------------ #
 
@@ -377,6 +508,14 @@ class Handler(BaseHTTPRequestHandler):
                                          str(payload.get("text", ""))))
                 return
 
+            if path == "/api/v1/line" and method == "POST":
+                self._require(identity, SCOPE_SMS, method)
+                payload = self._body()
+                self._json(200, app.report_line(str(payload.get("cable", "")).strip().lower(),
+                                                str(payload.get("detail", "")),
+                                                bool(payload.get("quiet"))))
+                return
+
             match = _ROUTE_MESSAGE.match(path)
             if match:
                 self._require(identity, SCOPE_SMS, method)
@@ -408,6 +547,19 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             # --- administration -------------------------------------------- #
+            if path == "/api/v1/settings/test-line" and method == "POST":
+                self._require(identity, "admin", method)
+                self._json(200, app.test_line_alert())
+                return
+
+            if path == "/api/v1/settings":
+                self._require(identity, "admin", method)
+                if method == "POST":
+                    self._json(200, app.save_settings(self._body()))
+                    return
+                self._json(200, app.settings_payload())
+                return
+
             if path == "/api/v1/keys":
                 self._require(identity, "admin", method)
                 if method == "POST":

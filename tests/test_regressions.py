@@ -192,3 +192,183 @@ def test_head_and_options_never_answer_501(tmp_path):
         server.shutdown()
         server.server_close()
         store.close()
+
+
+# --------------------------------------------------------------------------- #
+# the dashboard said "received" for messages that were sent
+# --------------------------------------------------------------------------- #
+
+def test_a_listed_message_says_which_way_it_went(tmp_path):
+    """The page tells sent from received by `direction`; the query never selected
+    it, so every row fell through to "received" and sent messages read as
+    received."""
+    from pocketsms.store import Store
+
+    store = Store(str(tmp_path / "d.db"))
+    try:
+        store.add_message("out", "+33612345678", "going out")
+        store.add_message("in", "+33612345678", "coming in")
+
+        sent = store.messages("sent")[0]
+        received = store.messages("inbox")[0]
+        assert sent["direction"] == "out", "the API omitted the direction field"
+        assert received["direction"] == "in"
+    finally:
+        store.close()
+
+
+# --------------------------------------------------------------------------- #
+# line monitoring
+# --------------------------------------------------------------------------- #
+
+def _app(tmp_path, **overrides):
+    from pocketsms.config import DEFAULTS, Config
+    from pocketsms.hilink import HiLink
+    from pocketsms.otp import OtpService
+    from pocketsms.server import App
+    from pocketsms.store import Store
+
+    config = Config(DEFAULTS)
+    config.update({"data_dir": str(tmp_path), "bind": "127.0.0.1", "port": "0"}, **overrides)
+    store = Store(str(tmp_path / "app.db"))
+    modem = _RecordingModem()
+    return App(config, store, modem, OtpService(modem, store, config)), store, modem
+
+
+class _RecordingModem:
+    """Stands in for the HiLink client: records sends, reports a device."""
+
+    base = "http://127.0.0.1:1"
+
+    def __init__(self):
+        self.sent = []
+
+    def send_sms(self, phone, text):
+        self.sent.append((phone, text))
+
+    def snapshot(self):
+        return {"information": {"DeviceName": "E5573Bs-320"}, "status": {}, "operator": "Orange F"}
+
+    def information(self):
+        return {"DeviceName": "E5573Bs-320"}
+
+    def operator(self):
+        return "Orange F"
+
+    def login(self):
+        return None
+
+
+def test_the_owner_phone_is_where_the_ui_puts_it(tmp_path):
+    app, store, _ = _app(tmp_path)
+    try:
+        assert app.setting("line_alert_phone") == ""          # nothing configured
+        assert app.setting("line_alert_cooldown") == "1800"   # falls back to the default
+
+        app.save_settings({"line_alert_phone": "0665423989", "line_alert_cooldown": "600"})
+        assert app.setting("line_alert_phone") == "+33665423989"   # normalised
+        assert app.setting("line_alert_cooldown") == "600"
+
+        # It survives a restart, because it is not held in memory.
+        assert store.setting("line_alert_phone") == "+33665423989"
+    finally:
+        store.close()
+
+
+def test_settings_reject_typos_and_shouting(tmp_path):
+    from pocketsms.server import ApiError
+
+    app, store, _ = _app(tmp_path)
+    try:
+        for payload in ({"line_alert_phnone": "0665423989"},      # a typo, not a no-op
+                        {"line_alert_cooldown": "5"},              # below the floor
+                        {"line_alert_cooldown": "soon"}):
+            try:
+                app.save_settings(payload)
+            except ApiError as exc:
+                assert exc.status == 400
+            else:
+                raise AssertionError(f"accepted {payload!r}")
+    finally:
+        store.close()
+
+
+def test_a_dropped_line_texts_the_owner_once(tmp_path):
+    app, store, modem = _app(tmp_path)
+    try:
+        app.save_settings({"line_alert_phone": "0665423989"})
+
+        first = app.report_line("down", "no route to the internet")
+        assert first["notified"] is True
+        assert len(modem.sent) == 1
+        number, text = modem.sent[0]
+        assert number == "+33665423989"
+        assert "tombee" in text                    # the configured template was used
+
+        # A repeat report inside the cooldown must not send a second SMS.
+        again = app.report_line("down", "still down")
+        assert again["notified"] is False
+        assert len(modem.sent) == 1
+
+        # Recovery is announced, and only because we had been down.
+        back = app.report_line("up", "route restored")
+        assert back["notified"] is True and len(modem.sent) == 2
+        assert "revenue" in modem.sent[1][1]
+
+        quiet = app.report_line("up", "still up")
+        assert quiet["notified"] is False and len(modem.sent) == 2
+
+        # And the state is visible to the dashboard.
+        assert app.line_state()["state"] == "up"
+    finally:
+        store.close()
+
+
+def test_a_line_alert_with_no_number_configured_is_silent(tmp_path):
+    app, store, modem = _app(tmp_path)
+    try:
+        result = app.report_line("down", "cable unplugged")
+        assert result["notified"] is False
+        assert "no owner phone" in result["reason"]
+        assert modem.sent == []
+    finally:
+        store.close()
+
+
+def test_the_test_button_sends_what_a_real_alert_looks_like(tmp_path):
+    from pocketsms.server import ApiError
+
+    app, store, modem = _app(tmp_path)
+    try:
+        try:
+            app.test_line_alert()
+        except ApiError as exc:
+            assert exc.reason == "no_owner_phone"
+        else:
+            raise AssertionError("sent a test with no number configured")
+
+        app.save_settings({"line_alert_phone": "0665423989"})
+        result = app.test_line_alert()
+        assert result["to"] == "+33665423989"
+        assert modem.sent[0][1].startswith("[test] "), "a test must not look like an outage"
+        # A test must not pretend the line is down.
+        assert app.line_state()["state"] == "unknown"
+    finally:
+        store.close()
+
+
+def test_a_quiet_report_syncs_the_state_without_texting(tmp_path):
+    """The watcher announces its starting state on every boot; that must not
+    cost an SMS, but the dashboard must stop showing a stale outage."""
+    app, store, modem = _app(tmp_path)
+    try:
+        app.save_settings({"line_alert_phone": "0665423989"})
+        app.report_line("down")                      # a real outage, announced
+        assert len(modem.sent) == 1
+
+        result = app.report_line("up", "watcher started", quiet=True)
+        assert result["notified"] is False
+        assert len(modem.sent) == 1                  # nothing sent
+        assert app.line_state()["state"] == "up"     # but the state moved
+    finally:
+        store.close()

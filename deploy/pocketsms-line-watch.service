@@ -1,0 +1,19 @@
+[Unit]
+Description=Watch the primary connection and fall back to the 4G router
+Documentation=https://github.com/paulschk/pocketsms#when-the-cable-drops
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# The script reads /etc/pocketsms-line-watch.conf itself, so there is one place
+# to configure it whether it runs under systemd or by hand.
+ExecStart=/opt/pocketsms/scripts/line-watch.sh
+Restart=always
+RestartSec=5
+# It edits the routing table and /etc/resolv.conf: that is the job.
+User=root
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

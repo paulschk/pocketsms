@@ -310,6 +310,20 @@ footer { max-width: 1040px; margin: 0 auto; padding: 0 20px 40px; color: var(--m
           <table style="margin-top:14px"><thead><tr><th>User</th><th>Role</th><th></th></tr></thead>
             <tbody id="users"></tbody></table>
         </div>
+        <div class="card" id="card-line">
+          <h2>Line monitoring</h2>
+          <p class="note" style="margin-top:0">When the watcher on the host reports that the
+            primary connection dropped, pocketsms texts this number. Leave it empty and
+            nothing is sent.</p>
+          <div id="line-fields"><div class="note">loading...</div></div>
+          <div class="row" style="margin-top:16px">
+            <button class="btn" id="line-save">Save</button>
+            <button class="btn ghost" id="line-test">Send a test SMS</button>
+            <span class="note" id="line-note"></span>
+          </div>
+          <div class="note" id="line-status"></div>
+        </div>
+
         <div class="card">
           <h2>Change my password</h2>
           <div class="field"><label for="pw-current">Current password</label>
@@ -359,7 +373,7 @@ function setTab(tab) {
   if (tab === 'dashboard') { loadDashboard(); loadRecent(); }
   if (tab === 'inbox') loadMessages('inbox');
   if (tab === 'sent') loadMessages('sent');
-  if (tab === 'settings') { loadKeys(); loadUsers(); }
+  if (tab === 'settings') { loadKeys(); loadUsers(); loadLineSettings(); }
 }
 document.querySelectorAll('nav.tabs button').forEach((button) =>
   button.addEventListener('click', () => setTab(button.dataset.tab)));
@@ -375,6 +389,7 @@ async function boot() {
     $('user-pill').textContent = me.user.username + (me.user.is_admin ? ' (admin)' : '');
     $('card-keys').classList.toggle('hidden', !me.user.is_admin);
     $('card-users').classList.toggle('hidden', !me.user.is_admin);
+    $('card-line').classList.toggle('hidden', !me.user.is_admin);
     show('app');
     setTab('dashboard');
   } catch (e) { show('login'); }
@@ -430,6 +445,9 @@ async function loadDashboard() {
   const signal = status.SignalStrength || '';
   const operator = data.operator || '-';
   const simReady = data.sim && data.sim.SimState === '257';
+  const line = data.line || {};
+  const lineState = line.state || 'unknown';
+  const lineDot = lineState === 'up' ? 'ok' : (lineState === 'down' ? 'bad' : '');
 
   $('modem-dot').className = 'dot ' + state;
   $('modem-text').textContent = (info.DeviceName || 'modem') + ' - ' + label;
@@ -443,6 +461,8 @@ async function loadDashboard() {
     + '<span class="pill">SIM <b>' + (simReady ? 'ready' : 'check') + '</b></span>'
     + '<span class="pill">battery <b>' + esc(status.BatteryPercent || '?') + '%</b></span>'
     + (status.WanIPAddress ? '<span class="pill mono">' + esc(status.WanIPAddress) + '</span>' : '');
+    + '<span class="pill"><span class="dot ' + lineDot + '"></span>line <b>'
+      + esc(lineState) + '</b></span>';
 
   $('dash-tiles').innerHTML = [
     ['Received', messages.in || 0],
@@ -463,6 +483,7 @@ async function loadDashboard() {
     ['SIM', simReady ? 'ready' : 'check'],
     ['Operator lock', (data.sim && data.sim.SimLockEnable) === '0' ? 'none' : 'locked'],
     ['WAN IP', status.WanIPAddress || '-'],
+    ['Primary line', lineState + (line.changed_at ? ' (since ' + line.changed_at + ')' : '')],
     ['Last poll', (data.poll && data.poll.last) || 'pending'],
   ];
   $('modem-details').innerHTML = rows.map((r) =>
@@ -611,6 +632,69 @@ $('pw-save').addEventListener('click', async () => {
     note.textContent = 'Password updated';
     $('pw-current').value = '';
     $('pw-new').value = '';
+  } catch (e) { note.className = 'note bad'; note.textContent = e.message; }
+});
+
+/* ---------- line monitoring ---------- */
+async function loadLineSettings() {
+  try {
+    const data = await api('/api/v1/settings');
+    const items = data.settings || [];
+    $('line-fields').innerHTML = items.map((s) => {
+      const id = 'set-' + s.key;
+      let control;
+      if (s.kind === 'bool') {
+        control = '<select id="' + id + '"><option value="true">yes</option>'
+          + '<option value="false">no</option></select>';
+      } else if (s.kind === 'int') {
+        control = '<input id="' + id + '" type="number" min="' + (s.min || 0)
+          + '" max="' + (s.max || 0) + '">';
+      } else {
+        control = '<input id="' + id + '"' + (s.kind === 'phone' ? ' inputmode="tel"' : '') + '>';
+      }
+      return '<div class="field"><label for="' + id + '">' + esc(s.label) + '</label>'
+        + control + '<div class="note" style="margin-top:4px">' + esc(s.help) + '</div></div>';
+    }).join('');
+    // Values go in after the markup exists, so a value containing quotes cannot break it.
+    items.forEach((s) => { const el = $('set-' + s.key); if (el) el.value = s.value; });
+  } catch (e) {
+    $('line-fields').innerHTML = '<div class="note bad">' + esc(e.message) + '</div>';
+  }
+  try {
+    const status = await api('/api/v1/status');
+    const line = status.line || {};
+    $('line-status').textContent = 'Last report: ' + (line.state || 'unknown')
+      + (line.changed_at ? ' at ' + line.changed_at : '')
+      + (line.last_alert_at ? ' - last alert ' + line.last_alert_at : '');
+  } catch (e) { /* the fields are what matter */ }
+}
+
+$('line-save').addEventListener('click', async () => {
+  const note = $('line-note');
+  const payload = {};
+  document.querySelectorAll('#line-fields [id^="set-"]').forEach((el) => {
+    payload[el.id.slice(4)] = el.value;
+  });
+  note.className = 'note';
+  note.textContent = 'saving...';
+  try {
+    await post('/api/v1/settings', payload);
+    note.className = 'note ok';
+    note.textContent = 'Saved';
+    loadLineSettings();
+    loadDashboard();
+  } catch (e) { note.className = 'note bad'; note.textContent = e.message; }
+});
+
+$('line-test').addEventListener('click', async () => {
+  const note = $('line-note');
+  note.className = 'note';
+  note.textContent = 'sending...';
+  try {
+    const result = await post('/api/v1/settings/test-line', {});
+    note.className = 'note ok';
+    note.textContent = 'Test sent to ' + result.to;
+    loadRecent();
   } catch (e) { note.className = 'note bad'; note.textContent = e.message; }
 });
 

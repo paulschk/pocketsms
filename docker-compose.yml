@@ -21,8 +21,12 @@ services:
     # keeps the port published on the LAN exactly where you expect it.
     network_mode: host
 
+    # `required: false` so `docker compose up -d` works with no .env at all - the
+    # image's own defaults are enough to start. An absent .env used to abort the
+    # whole file, which is not what "optional" means.
     env_file:
-      - .env
+      - path: .env
+        required: false
     volumes:
       - pocketsms-data:/data
 

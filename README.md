@@ -132,7 +132,8 @@ services:
     restart: unless-stopped
     network_mode: host                    # the router advertises its own 192.168.1.0/24
     env_file:
-      - .env
+      - path: .env
+        required: false        # so `docker compose up -d` works with no .env at all
     volumes:
       - pocketsms-data:/data
     security_opt:
@@ -141,6 +142,10 @@ services:
 volumes:
   pocketsms-data:
 ```
+
+The image is published to `ghcr.io/paulschk/pocketsms` on every push to `main` by
+`.github/workflows/image.yml`, for `amd64` and `arm64`, so you can drop `build:` and
+use `image:` alone if you would rather not build it yourself.
 
 `network_mode: host` is not a convenience shortcut. Most of these routers run their
 own LAN on `192.168.1.0/24` — the very subnet a typical home network uses — so the
@@ -215,6 +220,14 @@ Every setting is an environment variable. `POCKETSMS_FOO` and `FOO` both work.
 | `NTFY_URL` / `TELEGRAM_TOKEN` / `TELEGRAM_CHAT_ID` | — | Where inbound messages are forwarded |
 | `WEBHOOK_URL` | — | Gets `{"from": "...", "text": "..."}` for every inbound SMS |
 | `LOG_LEVEL` | `info` | `debug` is verbose but explains what the router said |
+| `LINE_ALERT_PHONE` | *empty* | Owner number for the line-down alert; empty disables it |
+| `LINE_ALERT_COOLDOWN` | `1800` | Minimum seconds between two alerts for the same outage |
+| `LINE_ALERT_ON_RECOVERY` | `true` | Also text when the primary line comes back |
+| `LINE_DOWN_MESSAGE` / `LINE_UP_MESSAGE` | French defaults | Templates: `{time}`, `{detail}` |
+
+The `LINE_ALERT_*` settings are also in the web UI under **Settings → Line
+monitoring**, where they are stored in the database and outrank the environment -
+an administrator who changes a setting in the UI expects it to stay changed.
 
 There is also `/etc/pocketsms.conf` (bare metal) or `.env` (Docker) if you prefer a
 file. Environment wins over the file.
@@ -237,6 +250,8 @@ instead.
 | `GET` | `/api/v1/otp/status?challenge=` | `otp` | State of a challenge |
 | `GET`/`POST`/`DELETE` | `/api/v1/keys[/{id}]` | admin | Manage API keys |
 | `GET`/`POST`/`DELETE` | `/api/v1/users[/{id}]` | admin | Manage accounts |
+| `POST` | `/api/v1/line` | `sms` | The host watcher reports the primary line up or down |
+| `GET`/`POST` | `/api/v1/settings` | admin | Read or change the runtime settings |
 | `POST` | `/api/v1/auth/login\|logout` | — | Web session |
 
 ```bash
@@ -306,6 +321,57 @@ grafana.example.com {
 The snippet behind `127.0.0.1:8091` keeps a signed cookie of its own and calls
 pocketsms's two endpoints. Whatever language you write it in, it is the same three
 steps as above — that is the whole contract.
+
+## When the cable drops
+
+pocketsms sends over the cellular network, a path your fibre does not share. That is
+only worth anything if something notices the fibre going away: `scripts/line-watch.sh`
+does the noticing and moves the default route, and pocketsms sends the text.
+
+```bash
+sudo mkdir -p /opt/pocketsms/scripts
+sudo install -m 755 scripts/line-watch.sh /opt/pocketsms/scripts/
+sudo install -m 644 deploy/pocketsms-line-watch.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now pocketsms-line-watch
+```
+
+Configure it in `/etc/pocketsms-line-watch.conf` — mode `600`, it holds an API key:
+
+```bash
+CABLE_IFACE=eth0             # the connection worth watching
+MOBILE_IFACE=eth1            # the router's interface
+MOBILE_GATEWAY=192.168.1.1
+MOBILE_SOURCE=192.168.1.240  # the /32 address the bring-up script assigned
+POCKETSMS_URL=http://192.168.1.55:8090
+POCKETSMS_API_KEY=pks_…      # pocketsms key create line-watch --scope sms
+```
+
+Then set the owner number once in **Settings → Line monitoring**. That is where the
+alert goes; leave it empty and nothing is sent.
+
+Why it is built the way it is:
+
+- **It probes the cable, not the internet.** The probe is bound to `CABLE_IFACE` with
+  `SO_BINDTODEVICE`, so a 4G link that is already carrying traffic cannot hide a dead
+  cable.
+- **It demotes, it does not delete.** On failure the cable's default route is kept at a
+  high metric and the fallback is added at metric 0. Deleting the cable's last route
+  blinds the probe to the cable coming back: the fallback becomes a one-way trap that
+  only a reboot escapes.
+- **It swaps the resolvers too.** The ISP box is still on the LAN, but its upstream is
+  gone, so name resolution through it dies with the line.
+- **It reports both transitions**, and pocketsms texts the owner once per outage
+  (`LINE_ALERT_COOLDOWN`), plus a recovery message if you asked for one.
+- **A restart resyncs the recorded state quietly** instead of leaving a stale "down" on
+  the dashboard or sending a text nobody's outage earned.
+
+Detection lives on the host rather than in the container on purpose: proving the cable
+path needs a capability the service deliberately does not hold. The phone number, the
+templates and the modem all stay in pocketsms.
+
+Two caveats: anything else that rewrites `/etc/resolv.conf` (a DHCP client, Tailscale)
+will fight it, and traffic over the cellular link spends that SIM's allowance — an
+Orange cap tends to arrive as a dead session rather than as a portal page.
 
 ## Security notes
 
