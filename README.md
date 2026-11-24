@@ -111,17 +111,43 @@ install the units and the udev rule:
 ```bash
 sudo mkdir -p /opt/pocketsms && sudo cp -r scripts /opt/pocketsms/
 sudo cp deploy/pocketsms-bringup.service /etc/systemd/system/
-sudo cp deploy/99-airbox.rules /etc/udev/rules.d/
+sudo cp deploy/99-pocketsms.rules /etc/udev/rules.d/
 sudo systemctl daemon-reload && sudo systemctl enable --now pocketsms-bringup
 ```
 
 > Your router is a different model? Check `lsusb` while it is cold and adjust the
-> USB IDs and the interface MAC in `deploy/99-airbox.rules`. If port 80 on
+> USB IDs and the interface MAC in `deploy/99-pocketsms.rules`. If port 80 on
 > `192.168.1.1` is free on your LAN, pick a different `POCKETSMS_LOCAL_IP`.
 
 ### 2. Run it
 
-**Docker** (recommended):
+**Docker** (recommended). The repository ships this `docker-compose.yml`; clone and
+use it, or paste it next to your `.env`:
+
+```yaml
+services:
+  pocketsms:
+    build: .                              # or: image: ghcr.io/paulschk/pocketsms:latest
+    container_name: pocketsms
+    restart: unless-stopped
+    network_mode: host                    # the router advertises its own 192.168.1.0/24
+    env_file:
+      - .env
+    volumes:
+      - pocketsms-data:/data
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  pocketsms-data:
+```
+
+`network_mode: host` is not a convenience shortcut. Most of these routers run their
+own LAN on `192.168.1.0/24` — the very subnet a typical home network uses — so the
+container has to reach `192.168.1.1` there while the host keeps routing
+`192.168.1.0/24` out its own interface. Sharing the host's network stack is the
+simplest way to hold both. No devices, no capabilities and no privileged mode are
+needed: the modem is spoken to over HTTP like any other host on the network.
 
 ```bash
 cp .env.example .env      # optional — the defaults work
@@ -297,6 +323,9 @@ steps as above — that is the whole contract.
   authentication. It is not designed to be exposed to the internet.
 - If a number receives two-factor codes for your bank, think twice before
   forwarding that inbox to a chat app.
+- Change the generated password on first sign-in. It is printed to the service
+  log at first run, so anything able to read that log — `docker logs`, the
+  journal, a log shipper — has already seen it.
 
 ## Troubleshooting
 
