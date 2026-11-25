@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/logo.svg" alt="pocketsms" width="88">
+
 # pocketsms
 
 **A self-hosted SMS gateway for the 4G router your ISP gave you.**

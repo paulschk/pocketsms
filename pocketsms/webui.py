@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import NAME, TAGLINE, __version__
+from . import GITHUB_URL, NAME, TAGLINE, __version__
 
 ASSET = Path(__file__).with_name("webui.html")
 
@@ -42,4 +42,5 @@ def page() -> str:
     return (_source()
             .replace("__NAME__", NAME)
             .replace("__TAGLINE__", TAGLINE)
-            .replace("__VERSION__", __version__))
+            .replace("__VERSION__", __version__)
+            .replace("__REPO__", GITHUB_URL))

@@ -14,6 +14,7 @@ these devices do not expose a serial interface at all.
 __version__ = "0.2.0"
 
 NAME = "pocketsms"
+GITHUB_URL = "https://github.com/paulschk/pocketsms"
 TAGLINE = "Self-hosted SMS gateway for ISP-provided 4G routers"
 DESCRIPTION = (
     "Send and receive SMS through the 4G router your ISP gave you "

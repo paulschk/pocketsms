@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="pocketsms">
+  <rect width="32" height="32" rx="7" fill="#2b6cb0"/>
+  <path d="M12.2 6h6.1L24 11.7V24a2 2 0 0 1-2 2H12a2 2 0 0 1-2-2V8a2 2 0 0 1 2.2-2z" fill="#fff"/>
+  <rect x="13" y="12.2" width="8" height="7" rx="1.1" fill="#2b6cb0"/>
+  <path d="M15.7 12.2v7M18.3 12.2v7M13 15.7h8" stroke="#fff" stroke-width="0.9"/>
+</svg>

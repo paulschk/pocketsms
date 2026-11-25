@@ -80,6 +80,16 @@ nav.tabs .count { font-size: 11px; color: var(--muted); margin-left: 5px; }
 .stack { display: grid; gap: 18px; }
 .grid-2 { display: grid; gap: 14px; align-items: start;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.grid-2 > .field {
+  /* The label row is a fixed two lines: one field's label wraps ("Repeat at most
+     every (seconds)") and the next one's does not ("Owner phone number"), which is
+     what left the inputs at different heights across the row. */
+  display: grid; grid-template-rows: 2.9em 38px auto; align-content: start; gap: 5px;
+}
+.grid-2 > .field + .field { margin-top: 0; }
+.grid-2 > .field label { margin: 0; line-height: 1.45em; }
+.grid-2 > .field input, .grid-2 > .field select { height: 38px; }
+.grid-2 > .field .note { margin-top: 0 !important; }
 .grid-2 .field.wide { grid-column: 1 / -1; }
 .card {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
@@ -346,7 +356,9 @@ footer { max-width: 1040px; margin: 0 auto; padding: 0 20px 40px; color: var(--m
       </div>
     </section>
   </main>
-  <footer>__NAME__ __VERSION__ &middot; __TAGLINE__</footer>
+  <footer>__NAME__ __VERSION__ &middot;
+    <a href="__REPO__" target="_blank" rel="noopener">github.com/paulschk/pocketsms</a>
+    &middot; __TAGLINE__</footer>
 </div>
 
 <script>
