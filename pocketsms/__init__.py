@@ -11,7 +11,7 @@ It talks HTTP to the router instead of AT commands over a serial port, because
 these devices do not expose a serial interface at all.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 NAME = "pocketsms"
 TAGLINE = "Self-hosted SMS gateway for ISP-provided 4G routers"

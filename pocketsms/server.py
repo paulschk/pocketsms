@@ -193,15 +193,42 @@ class App:
     # -- the primary line ---------------------------------------------------- #
 
     def line_state(self) -> dict:
-        """What the host-side watcher last reported, and when we last texted."""
+        """What the watcher last reported, and whether it is still out there.
+
+        The operating mode is derived, not configured: a watcher that keeps
+        reporting is what makes this a failover installation, and a watcher that
+        stopped is why the instance is SMS-only again. Three missed heartbeats and
+        it stops claiming otherwise.
+        """
+        try:
+            every = max(30, int(self.store.setting("_line_every") or 300))
+        except (TypeError, ValueError):
+            every = 300
+        seen = self.store.setting("_line_seen_at")
+        armed = False
+        if seen:
+            try:
+                since = time.mktime(time.strptime(seen, "%Y-%m-%d %H:%M:%S"))
+                armed = (time.time() - since) <= max(3 * every, 900)
+            except ValueError:
+                armed = False
         return {
             "state": self.store.setting("_line_state") or "unknown",
             "detail": self.store.setting("_line_detail") or "",
             "changed_at": self.store.setting("_line_changed_at"),
             "last_alert_at": self.store.setting("_line_last_alert_at"),
+            "mode": "failover" if armed else "sms-only",
+            "watcher": {
+                "armed": armed,
+                "last_seen": seen,
+                "every": every,
+                "watching": self.store.setting("_line_watching") or "",
+                "fallback": self.store.setting("_line_fallback") or "",
+            },
         }
 
-    def report_line(self, cable: str, detail: str = "", quiet: bool = False) -> dict:
+    def report_line(self, cable: str, detail: str = "", quiet: bool = False, *,
+                    watching: str = "", fallback: str = "", every: object = None) -> dict:
         """The watcher reports the primary line up or down; we do the texting.
 
         Detection lives on the host on purpose: proving the *cable* path needs
@@ -212,8 +239,18 @@ class App:
             raise ApiError(400, "invalid_state", "cable must be up, down or unknown")
         previous = self.store.setting("_line_state") or "unknown"
         stamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        self.store.save_settings({"_line_state": cable, "_line_detail": detail[:200],
-                                  "_line_changed_at": stamp})
+        record = {"_line_state": cable, "_line_detail": detail[:200],
+                  "_line_changed_at": stamp, "_line_seen_at": stamp}
+        if watching:
+            record["_line_watching"] = watching[:40]
+        if fallback:
+            record["_line_fallback"] = fallback[:40]
+        if every is not None:
+            try:
+                record["_line_every"] = str(max(30, min(86400, int(every))))
+            except (TypeError, ValueError):
+                pass
+        self.store.save_settings(record)
 
         if quiet:
             # State sync, not news: the dashboard stops lying after a restart and
@@ -511,9 +548,13 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/v1/line" and method == "POST":
                 self._require(identity, SCOPE_SMS, method)
                 payload = self._body()
-                self._json(200, app.report_line(str(payload.get("cable", "")).strip().lower(),
-                                                str(payload.get("detail", "")),
-                                                bool(payload.get("quiet"))))
+                self._json(200, app.report_line(
+                    str(payload.get("cable", "")).strip().lower(),
+                    str(payload.get("detail", "")),
+                    bool(payload.get("quiet")),
+                    watching=str(payload.get("watching", "")),
+                    fallback=str(payload.get("fallback", "")),
+                    every=payload.get("every")))
                 return
 
             match = _ROUTE_MESSAGE.match(path)
@@ -635,9 +676,7 @@ def _int(query: dict, name: str, default: int, low: int, high: int) -> int:
 FAVICON = (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
     '<rect width="32" height="32" rx="7" fill="#2b6cb0"/>'
-    '<path d="M9 21V11h3.6c2.2 0 3.4 1 3.4 2.6 0 1.2-.7 2-1.8 2.3 1.3.2 2.2 1.1 2.2 2.5 '
-    '0 1.7-1.3 2.6-3.6 2.6H9zm2.4-6h1c.9 0 1.4-.4 1.4-1.1S13.3 13 12.4 13h-1v2zm0 4.2h1.2c.9 '
-    '0 1.5-.4 1.5-1.1 0-.7-.5-1.1-1.5-1.1h-1.2v2.2z" fill="#fff"/></svg>'
+    '<path d="M12.2 6h6.1L24 11.7V24a2 2 0 0 1-2 2H12a2 2 0 0 1-2-2V8a2 2 0 0 1 2.2-2z" fill="#fff"/><rect x="13" y="12.2" width="8" height="7" rx="1.1" fill="#2b6cb0"/><path d="M15.7 12.2v7M18.3 12.2v7M13 15.7h8" stroke="#fff" stroke-width="0.9"/></svg>'
 ).encode()
 
 

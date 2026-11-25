@@ -372,3 +372,56 @@ def test_a_quiet_report_syncs_the_state_without_texting(tmp_path):
         assert app.line_state()["state"] == "up"     # but the state moved
     finally:
         store.close()
+
+
+def test_the_mode_says_whether_anything_is_watching_the_line(tmp_path):
+    """SMS-only or failover is derived from the watcher reporting, not from a flag
+    somebody set once and forgot."""
+    app, store, modem = _app(tmp_path)
+    try:
+        # Nothing has ever reported: this is an SMS gateway and nothing more.
+        assert app.line_state()["mode"] == "sms-only"
+        assert app.line_state()["watcher"]["armed"] is False
+
+        # A heartbeat from the watcher arms the failover, quietly.
+        app.report_line("up", "watcher alive", quiet=True, watching="eth0",
+                        fallback="eth1", every=300)
+        state = app.line_state()
+        assert state["mode"] == "failover"
+        assert state["watcher"]["armed"] is True
+        assert state["watcher"]["watching"] == "eth0"
+        assert state["watcher"]["fallback"] == "eth1"
+        assert modem.sent == [], "a heartbeat must never text anybody"
+
+        # Three missed heartbeats and it stops claiming to be armed.
+        store.save_settings({"_line_seen_at": "2020-01-01 00:00:00"})
+        assert app.line_state()["mode"] == "sms-only"
+    finally:
+        store.close()
+
+
+def test_a_stale_heartbeat_interval_is_ignored(tmp_path):
+    """A nonsense `every` from a hand-written payload must not arm anything."""
+    app, store, _ = _app(tmp_path)
+    try:
+        app.report_line("up", "hello", quiet=True, every="not-a-number")
+        assert app.line_state()["watcher"]["every"] == 300
+        app.report_line("up", "hello", quiet=True, every=5)
+        assert app.line_state()["watcher"]["every"] == 30      # floored, not trusted
+    finally:
+        store.close()
+
+
+def test_the_declared_version_matches_the_package():
+    """Two files carry the version; a release tagged from one and built from the
+    other is how you ship an image whose /api/v1/health lies."""
+    import re
+    import pathlib
+
+    import pocketsms
+
+    root = pathlib.Path(__file__).resolve().parent.parent
+    declared = re.search(r'^version\s*=\s*"([^"]+)"',
+                         (root / "pyproject.toml").read_text(encoding="utf-8"), re.M)
+    assert declared, "no version declared in pyproject.toml"
+    assert declared.group(1) == pocketsms.__version__

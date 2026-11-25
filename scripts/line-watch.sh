@@ -25,6 +25,7 @@ INTERVAL="${INTERVAL:-10}"
 FAIL_AFTER="${FAIL_AFTER:-3}"
 RECOVER_AFTER="${RECOVER_AFTER:-2}"
 FALLBACK_DNS="${FALLBACK_DNS:-1.1.1.1 8.8.8.8}"
+HEARTBEAT="${HEARTBEAT:-300}"               # seconds between "still here" reports
 REPORT_ATTEMPTS="${REPORT_ATTEMPTS:-6}"       # the service may still be starting
 REPORT_RETRY_DELAY="${REPORT_RETRY_DELAY:-3}"
 POCKETSMS_URL="${POCKETSMS_URL:-}"
@@ -76,8 +77,11 @@ report() {
     log "$cable: $detail (no pocketsms credentials, not reporting)"
     return 0
   fi
-  body=$(printf '{"cable":"%s","detail":"%s","quiet":%s}' "$cable" \
-                 "$(json_detail "$detail")" "$quiet")
+  # `every`, `watching` and `fallback` are what let pocketsms show the operating
+  # mode: a watcher that reports is what makes this a failover installation.
+  body=$(printf '{"cable":"%s","detail":"%s","quiet":%s,"watching":"%s","fallback":"%s","every":%s}' \
+                 "$cable" "$(json_detail "$detail")" "$quiet" \
+                 "$(json_detail "$CABLE_IFACE")" "$(json_detail "$MOBILE_IFACE")" "$HEARTBEAT")
   # Retry: the two containers start together, and pocketsms needs a few seconds to
   # listen, so the first report of a session used to be dropped into the void. An
   # alert nobody receives because of a startup race is not an alert.
@@ -146,6 +150,7 @@ and_restore() {
 state="up"
 fails=0
 oks=0
+last_beat=$(date +%s)
 log "watching $CABLE_IFACE against $PROBE_URL; fallback $MOBILE_IFACE via $MOBILE_GATEWAY"
 log "original default: $ORIGINAL_GW dev $ORIGINAL_DEV"
 # Sync the recorded state without texting anybody: the watcher only reports
@@ -160,6 +165,13 @@ stop() {
 trap stop TERM INT
 
 while :; do
+  # A quiet heartbeat every HEARTBEAT seconds: no text, no state change, just proof
+  # to the service that the failover is still armed.
+  if [ $(( $(date +%s) - last_beat )) -ge "$HEARTBEAT" ]; then
+    report "$state" "watcher alive; primary line is $state" quiet
+    last_beat=$(date +%s)
+  fi
+
   if cable_is_up; then
     oks=$((oks + 1))
     fails=0

@@ -158,7 +158,7 @@ footer { max-width: 1040px; margin: 0 auto; padding: 0 20px 40px; color: var(--m
   <div class="login">
     <div class="brand">
       <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#2b6cb0"/>
-      <path d="M9 21V11h3.6c2.2 0 3.4 1 3.4 2.6 0 1.2-.7 2-1.8 2.3 1.3.2 2.2 1.1 2.2 2.5 0 1.7-1.3 2.6-3.6 2.6H9zm2.4-6h1c.9 0 1.4-.4 1.4-1.1S13.3 13 12.4 13h-1v2zm0 4.2h1.2c.9 0 1.5-.4 1.5-1.1 0-.7-.5-1.1-1.5-1.1h-1.2v2.2z" fill="#fff"/></svg>
+      <path d="M12.2 6h6.1L24 11.7V24a2 2 0 0 1-2 2H12a2 2 0 0 1-2-2V8a2 2 0 0 1 2.2-2z" fill="#fff"/><rect x="13" y="12.2" width="8" height="7" rx="1.1" fill="#2b6cb0"/><path d="M15.7 12.2v7M18.3 12.2v7M13 15.7h8" stroke="#fff" stroke-width="0.9"/></svg>
       <h1>__NAME__</h1>
     </div>
     <p class="tagline">__TAGLINE__</p>
@@ -176,11 +176,12 @@ footer { max-width: 1040px; margin: 0 auto; padding: 0 20px 40px; color: var(--m
     <div class="bar">
       <div class="brand">
         <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#2b6cb0"/>
-        <path d="M9 21V11h3.6c2.2 0 3.4 1 3.4 2.6 0 1.2-.7 2-1.8 2.3 1.3.2 2.2 1.1 2.2 2.5 0 1.7-1.3 2.6-3.6 2.6H9zm2.4-6h1c.9 0 1.4-.4 1.4-1.1S13.3 13 12.4 13h-1v2zm0 4.2h1.2c.9 0 1.5-.4 1.5-1.1 0-.7-.5-1.1-1.5-1.1h-1.2v2.2z" fill="#fff"/></svg>
+        <path d="M12.2 6h6.1L24 11.7V24a2 2 0 0 1-2 2H12a2 2 0 0 1-2-2V8a2 2 0 0 1 2.2-2z" fill="#fff"/><rect x="13" y="12.2" width="8" height="7" rx="1.1" fill="#2b6cb0"/><path d="M15.7 12.2v7M18.3 12.2v7M13 15.7h8" stroke="#fff" stroke-width="0.9"/></svg>
         <h1>__NAME__</h1>
       </div>
       <span class="spacer"></span>
       <span class="pill" id="modem-pill"><span class="dot" id="modem-dot"></span><span id="modem-text">checking...</span></span>
+      <span class="pill" id="mode-pill"></span>
       <span class="pill" id="user-pill"></span>
       <button class="btn ghost" id="logout">Sign out</button>
     </div>
@@ -295,9 +296,10 @@ footer { max-width: 1040px; margin: 0 auto; padding: 0 20px 40px; color: var(--m
       <div class="stack">
         <div class="card" id="card-line">
           <h2>Line monitoring</h2>
-          <p class="note" style="margin-top:0">When the watcher on the host reports that the
-            primary connection dropped, pocketsms texts this number. Leave it empty and
-            nothing is sent.</p>
+          <p class="note" style="margin-top:0">When a line watcher is running and reports that
+            the primary connection dropped, pocketsms texts this number. Leave it empty and
+            nothing is sent — and with no watcher at all this instance is SMS-only.
+            Arm one with <code>docker compose --profile failover up -d</code>.</p>
           <div class="grid-2" id="line-fields"><div class="note">loading...</div></div>
           <div class="row" style="margin-top:16px">
             <button class="btn" id="line-save">Save</button>
@@ -432,11 +434,45 @@ const NETWORK = {
   '6': 'HSUPA', '7': 'HSPA', '8': 'TD-SCDMA', '9': 'HSPA+', '19': 'LTE', '101': 'LTE+',
 };
 
-function signalBars(value) {
-  const level = Math.max(0, Math.min(5, parseInt(value || '0', 10) || 0));
+function signalBars(value, max) {
+  const ceiling = Math.max(1, parseInt(max || '5', 10) || 5);
+  const raw = Math.max(0, Math.min(ceiling, parseInt(value || '0', 10) || 0));
+  const level = Math.round((raw / ceiling) * 5);          // five bars, whatever the ceiling
   const colour = level === 0 ? '' : (level <= 2 ? 'warn' : 'on');
   return [1, 2, 3, 4, 5].map((i) =>
     '<i class="' + (i <= level ? colour : '') + '" style="height:' + (5 + i * 4) + 'px"></i>').join('');
+}
+
+/* This firmware leaves SignalStrength blank and every dBm field with it, so the
+   page used to claim "no signal" on a modem holding a bar. SignalIcon is the level
+   the module does report, next to the `maxsignal` it is measured against. */
+function signalReading(status, signal) {
+  const max = Math.max(1, parseInt((status && status.maxsignal) || '5', 10) || 5);
+  const icon = status ? (status.SignalIcon || '') : '';
+  const raw = icon !== '' ? icon : ((status && status.SignalStrength) || '');
+  const level = Math.max(0, Math.min(max, parseInt(raw || '0', 10) || 0));
+  const quality = level === 0 ? 'no signal'
+    : (level <= max * 0.4 ? 'weak' : (level <= max * 0.7 ? 'fair' : 'good'));
+  const dbm = (signal && signal.rsrp) ? signal.rsrp + ' dBm' : '';
+  return { max: max, level: level, quality: quality, dbm: dbm };
+}
+
+/* SMS-only or SMS plus failover: derived from whether the watcher is reporting,
+   never from a flag somebody forgot to change. */
+function operatingMode(line) {
+  const watcher = (line && line.watcher) || {};
+  if (watcher.armed) {
+    return {
+      key: 'failover', dot: 'ok', label: 'SMS + 4G failover',
+      detail: 'watcher armed'
+        + (watcher.watching ? ', watching ' + watcher.watching
+           + (watcher.fallback ? ' -> ' + watcher.fallback : '') : ''),
+    };
+  }
+  return {
+    key: 'sms-only', dot: '', label: 'SMS only',
+    detail: 'no line watcher is running: nothing moves the default route',
+  };
 }
 
 async function loadDashboard() {
@@ -450,27 +486,34 @@ async function loadDashboard() {
   const info = data.information || {}, status = data.status || {}, counts = data.counts || {};
   const messages = data.messages || {};
   const [state, label] = CONNECTION[status.ConnectionStatus] || ['warn', 'unknown'];
-  const signal = status.SignalStrength || '';
+  const signal = signalReading(status, data.signal || {});
   const operator = data.operator || '-';
   const simReady = data.sim && data.sim.SimState === '257';
   const line = data.line || {};
   const lineState = line.state || 'unknown';
   const lineDot = lineState === 'up' ? 'ok' : (lineState === 'down' ? 'bad' : '');
+  const mode = operatingMode(line);   // after `line` exists: reading it earlier throws
 
   $('modem-dot').className = 'dot ' + state;
   $('modem-text').textContent = (info.DeviceName || 'modem') + ' - ' + label;
   $('dash-name').textContent = info.DeviceName || 'modem';
   $('dash-sub').textContent = operator + ' | ' + (NETWORK[status.CurrentNetworkType] || 'network ?')
     + ' | firmware ' + (info.SoftwareVersion || '?');
-  $('dash-signal').innerHTML = signalBars(signal);
-  $('dash-signal-label').textContent = signal ? signal + '/5 signal' : 'no signal';
+  $('dash-signal').innerHTML = signalBars(signal.level, signal.max);
+  $('dash-signal-label').textContent = signal.level + '/' + signal.max + ' ' + signal.quality
+    + (signal.dbm ? ' \u00b7 ' + signal.dbm : '');
   $('dash-pills').innerHTML =
     '<span class="pill"><span class="dot ' + state + '"></span><b>' + esc(label) + '</b></span>'
     + '<span class="pill">SIM <b>' + (simReady ? 'ready' : 'check') + '</b></span>'
     + '<span class="pill">battery <b>' + esc(status.BatteryPercent || '?') + '%</b></span>'
     + (status.WanIPAddress ? '<span class="pill mono">' + esc(status.WanIPAddress) + '</span>' : '');
     + '<span class="pill"><span class="dot ' + lineDot + '"></span>line <b>'
-      + esc(lineState) + '</b></span>';
+      + esc(lineState) + '</b></span>'
+    + '<span class="pill" title="' + esc(mode.detail) + '"><span class="dot ' + mode.dot
+      + '"></span><b>' + esc(mode.label) + '</b></span>';
+
+  $('mode-pill').innerHTML = '<span class="dot ' + mode.dot + '"></span>' + esc(mode.label);
+  $('mode-pill').setAttribute('title', mode.detail + ' - ' + esc(mode.key));
 
   $('dash-tiles').innerHTML = [
     ['Received', messages.in || 0],
@@ -486,7 +529,9 @@ async function loadDashboard() {
   const rows = [
     ['Operator', operator],
     ['Connection', label],
-    ['Signal', signal ? signal + '/5' : '-'],
+    ['Signal', signal.level + '/' + signal.max + ' ' + signal.quality
+      + (signal.dbm ? ' (' + signal.dbm + ')' : '')],
+    ['Operating mode', mode.label + ' \u2014 ' + mode.detail],
     ['Network', NETWORK[status.CurrentNetworkType] || '-'],
     ['SIM', simReady ? 'ready' : 'check'],
     ['Operator lock', (data.sim && data.sim.SimLockEnable) === '0' ? 'none' : 'locked'],
@@ -671,10 +716,13 @@ async function loadLineSettings() {
   }
   try {
     const status = await api('/api/v1/status');
-    const line = status.line || {};
-    $('line-status').textContent = 'Last report: ' + (line.state || 'unknown')
-      + (line.changed_at ? ' at ' + line.changed_at : '')
-      + (line.last_alert_at ? ' - last alert ' + line.last_alert_at : '');
+    const line = status.line || {}, watcher = line.watcher || {};
+    const mode = operatingMode(line);
+    $('line-status').innerHTML = '<b>' + esc(mode.label) + '</b> — ' + esc(mode.detail)
+      + '<br>Line ' + esc(line.state || 'unknown')
+      + (line.changed_at ? ' since ' + esc(line.changed_at) : '')
+      + ' · watcher last seen ' + (watcher.last_seen ? esc(watcher.last_seen) : 'never')
+      + (line.last_alert_at ? ' · last alert ' + esc(line.last_alert_at) : '');
   } catch (e) { /* the fields are what matter */ }
 }
 

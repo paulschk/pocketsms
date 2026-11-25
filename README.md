@@ -130,6 +130,26 @@ sudo -u pocketsms python3 -m pocketsms serve   # prints the admin password on fi
 Open `http://<host>:8090`, sign in as `admin` with the password printed at first start,
 and change it in Settings.
 
+## Two modes
+
+pocketsms runs in one of two modes, and the web interface always shows which: a pill in
+the header, and *Operating mode* on the dashboard. The mode is **derived, not
+configured** — a watcher that keeps reporting is what makes an installation a failover
+one, and a watcher that stops is why it falls back to SMS-only.
+
+| | **SMS only**<br>`docker compose up -d` | **SMS + 4G failover**<br>`docker compose --profile failover up -d` |
+|---|---|---|
+| Send and receive SMS, REST API, web interface | ✅ | ✅ |
+| SMS one-time passwords for your other services | ✅ | ✅ |
+| A text when your connection drops | — | ✅ |
+| Default route moved to the 4G router while it is down | — | ✅ |
+| Containers | one, unprivileged | two: the service, plus a privileged watcher |
+| What it changes on the host | nothing | the routing table and `/etc/resolv.conf` |
+
+Both modes use the same API and the same database. Turning the failover on later changes
+nothing about the SMS side; it adds something that watches the line and tells you about
+it. See [When the cable drops](#when-the-cable-drops) for what that watcher needs.
+
 ## The web interface
 
 | Tab | For |
@@ -318,7 +338,8 @@ the signal and the database, and tells you which step failed.
 | the router never answers | still in ZeroCD mass-storage mode | `sudo ./scripts/bringup.sh` |
 | it answered before, silent now | subnet collision, or the route was lost on replug | re-run `bringup.sh`; check `ip route get 192.168.1.1` |
 | `error 108002` | wrong router password | set `MODEM_PASSWORD` (Orange Airbox default: `admin`) |
-| `ConnectionStatus 902` | no mobile data | **harmless for SMS** — the radio is registered |
+| `ConnectionStatus 902` | the router itself has no data session | **harmless for SMS** — the radio is registered. Unrelated to the failover, which watches your cable, not the modem |
+| the signal indicator shows `1/5` and no dBm | normal on this firmware: it leaves `SignalStrength` and every dBm field empty and reports only a bar level | the indicator uses the module's own level (`SignalIcon` against `maxsignal`); a low reading means the router is badly placed for radio |
 | nothing ever arrives in the inbox | some firmwares keep SMS on the SIM only | check the router's own web page |
 | a message arrived twice | should not happen | deduplication is by fingerprint — open an issue |
 

@@ -1,0 +1,49 @@
+name: release
+
+# Tag a commit and this publishes the release. Creating it from CI rather than from
+# somebody's laptop is what keeps the notes, the tag and the image in step.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write        # to create the release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" --title "pocketsms $TAG" --notes "$(cat <<'NOTES'
+          Self-hosted SMS gateway for the 4G router your ISP gave you.
+
+          **In this release**
+
+          - Send and receive SMS through the router's own SIM, with a REST API and a
+            web interface.
+          - SMS one-time passwords for two-step verification: single-use codes,
+            expiry, attempt limits and per-number rate limiting.
+          - Line monitoring: a text when your connection drops, and the line state on
+            the dashboard.
+          - Optional 4G failover, delivered as a compose profile: while your cable is
+            down the default route moves to the router, and back when it returns.
+          - `pocketsms doctor`, inbound relays (ntfy, Telegram, webhook), and a
+            dependency-free image for amd64 and arm64.
+
+          Install:
+
+          ```
+          docker compose up -d                       # SMS only
+          docker compose --profile failover up -d    # SMS + 4G failover
+          ```
+
+          The image is published to `ghcr.io/paulschk/pocketsms`. The README says what
+          the failover needs and why it is the one privileged part.
+          NOTES
+          )"
